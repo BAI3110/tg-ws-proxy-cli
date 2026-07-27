@@ -50,7 +50,7 @@ impl Balancer {
     pub fn get_domains_for_dc(&self, dc_id: i32) -> Vec<String> {
         let mut result = Vec::new();
         let current_domain = self.dc_to_domain.get(&dc_id).cloned();
-        
+
         if let Some(ref d) = current_domain {
             result.push(d.clone());
         }
@@ -64,7 +64,7 @@ impl Balancer {
                 result.push(d);
             }
         }
-        
+
         result
     }
 }

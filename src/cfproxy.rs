@@ -1,5 +1,5 @@
 use crate::config::*;
-use crate::ws::{is_http_status_error, ws_connect_once, RawWebSocket, WsError};
+use crate::ws::{RawWebSocket, WsError, is_http_status_error, ws_connect_once};
 use crate::{ldebug, lerror, linfo, lwarn};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -167,7 +167,11 @@ pub fn mark_cfproxy_429_cooldown(domain: &str, err: &WsError) {
         },
     );
     drop(map);
-    ldebug!(" CF cooldown {}: {:.0}s after 429", d, delay.as_secs_f64().ceil());
+    ldebug!(
+        " CF cooldown {}: {:.0}s after 429",
+        d,
+        delay.as_secs_f64().ceil()
+    );
 }
 
 pub fn cfproxy_429_cooldown_remaining(domain: &str) -> Duration {
@@ -193,6 +197,7 @@ pub fn cfproxy_429_cooldown_remaining(domain: &str) -> Duration {
     until - now
 }
 
+#[inline]
 pub async fn acquire_cfproxy_attempt_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
     CFPROXY_SEM.acquire().await.ok()
 }
@@ -202,11 +207,11 @@ pub async fn acquire_cfproxy_attempt_slot() -> Option<tokio::sync::SemaphorePerm
 // ---------------------------------------------------------------------------
 
 fn cfproxy_cache_path() -> Option<PathBuf> {
-    let dir = CFPROXY.read().cache_dir.trim().to_string();
-    if dir.is_empty() {
+    let dir = CFPROXY.read().cache_dir.clone();
+    if dir.capacity() == 0 {
         return None;
     }
-    Some(PathBuf::from(dir).join(CFPROXY_CACHE_FILE_NAME))
+    Some(dir.join(CFPROXY_CACHE_FILE_NAME))
 }
 
 // Активный домен больше не сохраняется в отдельный файл. Балансер работает в памяти.
@@ -223,8 +228,6 @@ fn load_cfproxy_domains_from_cache() -> Vec<String> {
     let list: Vec<String> = data.split('\n').map(|s| s.to_string()).collect();
     merge_cfproxy_domains(&[list])
 }
-
-
 
 fn save_cfproxy_domains_to_cache(domains: &[String]) {
     let path = match cfproxy_cache_path() {
@@ -246,8 +249,6 @@ fn save_cfproxy_domains_to_cache(domains: &[String]) {
     }
 }
 
-
-
 fn should_refresh_cfproxy_domains() -> bool {
     let path = match cfproxy_cache_path() {
         Some(p) => p,
@@ -267,8 +268,6 @@ fn should_refresh_cfproxy_domains() -> bool {
     }
 }
 
-
-
 pub fn init_cfproxy_domains() {
     let defaults = default_cfproxy_domains();
     let cached = load_cfproxy_domains_from_cache();
@@ -277,19 +276,25 @@ pub fn init_cfproxy_domains() {
     if !cfg.user_domain.is_empty() {
         let ud = cfg.user_domain.clone();
         cfg.domains = vec![ud.clone()];
-        crate::balancer::BALANCER.write().update_domains_list(&cfg.domains);
+        crate::balancer::BALANCER
+            .write()
+            .update_domains_list(&cfg.domains);
         return;
     }
 
     if !cached.is_empty() {
         let n = cached.len();
         cfg.domains = merge_cfproxy_domains(&[cached, defaults]);
-        crate::balancer::BALANCER.write().update_domains_list(&cfg.domains);
+        crate::balancer::BALANCER
+            .write()
+            .update_domains_list(&cfg.domains);
         drop(cfg);
         linfo!(" CF: кеш доменов загружен ({} шт.)", n);
     } else {
         cfg.domains = defaults;
-        crate::balancer::BALANCER.write().update_domains_list(&cfg.domains);
+        crate::balancer::BALANCER
+            .write()
+            .update_domains_list(&cfg.domains);
     }
 }
 
@@ -368,7 +373,9 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
             }
             cfg.domains = merged.clone();
         }
-        crate::balancer::BALANCER.write().update_domains_list(&merged);
+        crate::balancer::BALANCER
+            .write()
+            .update_domains_list(&merged);
         save_cfproxy_domains_to_cache(&merged);
         linfo!(" CF: список доменов обновлен ({} шт.)", new_domains.len());
         return true;
@@ -469,11 +476,9 @@ pub async fn resolve_doh(domain: &str) -> Option<String> {
         let tx = tx.clone();
         tasks.push(tokio::spawn(async move {
             let host = format!("{}:443", domain2);
-            if let Ok(Ok(addrs)) = tokio::time::timeout(
-                Duration::from_millis(1500),
-                tokio::net::lookup_host(host),
-            )
-            .await
+            if let Ok(Ok(addrs)) =
+                tokio::time::timeout(Duration::from_millis(1500), tokio::net::lookup_host(host))
+                    .await
             {
                 let ips: Vec<String> = addrs.map(|a| a.ip().to_string()).collect();
                 let p = pick_preferred_ip(&ips);
@@ -521,7 +526,7 @@ pub async fn resolve_doh(domain: &str) -> Option<String> {
             (ip.clone(), Instant::now() + Duration::from_secs(300)),
         );
     }
-    
+
     final_ip
 }
 
@@ -586,9 +591,4 @@ pub fn log_cf_conn_error(msg: &str, err: &WsError) {
     } else {
         lerror!("{}", msg);
     }
-}
-
-// активный домен set/save
-pub fn set_active_domain_and_save(_chosen: &str) {
-    // Больше не используется для файлов. Балансер обновляется внутри proxy.rs
 }

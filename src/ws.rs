@@ -1,6 +1,6 @@
 use crate::config::*;
 use crate::crypto::xor_mask_in_place;
-use crate::{ldebug};
+use crate::ldebug;
 use base64::Engine;
 use byteorder::{BigEndian, ByteOrder};
 use rand::RngCore;
@@ -9,13 +9,13 @@ use rustls::{ClientConfig, DigitallySignedStruct, SignatureScheme};
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 
 // ---------------------------------------------------------------------------
 // WS opcodes

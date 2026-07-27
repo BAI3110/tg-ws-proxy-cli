@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -10,8 +11,8 @@ use std::time::{Duration, Instant};
 
 pub const DEFAULT_PORT: u16 = 1443;
 pub const TCP_NODELAY: bool = true;
-pub const DEFAULT_RECV_BUF: usize = 256 * 1024;
-pub const DEFAULT_SEND_BUF: usize = 256 * 1024;
+//pub const DEFAULT_RECV_BUF: usize = 256 * 1024;
+//pub const DEFAULT_SEND_BUF: usize = 256 * 1024;
 pub const DEFAULT_POOL_SZ: i32 = 4;
 
 pub const DC_FAIL_COOLDOWN: f64 = 30.0;
@@ -22,13 +23,13 @@ pub const BRIDGE_PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const WS_CONTROL_TIMEOUT: Duration = Duration::from_secs(2);
 pub const WS_BRIDGE_CHUNK_SIZE: usize = 64 * 1024;
-pub const POOLED_FRAME_CAP: usize = WS_BRIDGE_CHUNK_SIZE + 32;
+//pub const POOLED_FRAME_CAP: usize = WS_BRIDGE_CHUNK_SIZE + 32;
 
 pub const WS_POOL_REUSE_MAX_AGE: f64 = 120.0;
 pub const WS_POOL_CONNECT_TIMEOUT: f64 = 8.0;
 
 pub const CFPROXY_CACHE_FILE_NAME: &str = "cfproxy-domains-cache.txt";
-pub const CFPROXY_ACTIVE_FILE_NAME: &str = "cfproxy-active-domain.txt";
+//pub const CFPROXY_ACTIVE_FILE_NAME: &str = "cfproxy-active-domain.txt";
 pub const CFPROXY_REFRESH_INTERVAL: Duration = Duration::from_secs(12 * 3600);
 pub const CFPROXY_DIAL_PHASE_TIMEOUT: Duration = Duration::from_secs(4);
 pub const CFPROXY_FALLBACK_PARALLEL: usize = 2;
@@ -36,10 +37,11 @@ pub const CFPROXY_429_COOLDOWN: Duration = Duration::from_secs(45);
 pub const CFPROXY_429_MAX_COOLDOWN: Duration = Duration::from_secs(300);
 pub const CFPROXY_GLOBAL_PARALLEL: usize = 4;
 
-pub static RECV_BUF: AtomicI32 = AtomicI32::new(DEFAULT_RECV_BUF as i32);
-pub static SEND_BUF: AtomicI32 = AtomicI32::new(DEFAULT_SEND_BUF as i32);
+//pub static RECV_BUF: AtomicI32 = AtomicI32::new(DEFAULT_RECV_BUF as i32);
+//pub static SEND_BUF: AtomicI32 = AtomicI32::new(DEFAULT_SEND_BUF as i32);
 pub static POOL_SIZE: AtomicI32 = AtomicI32::new(DEFAULT_POOL_SZ);
 pub static LOG_VERBOSE: AtomicBool = AtomicBool::new(false);
+pub static LOG_CONSOLE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Clone)]
 pub struct Cfproxy429State {
@@ -49,7 +51,10 @@ pub struct Cfproxy429State {
 
 impl Default for Cfproxy429State {
     fn default() -> Self {
-        Cfproxy429State { until: None, strikes: 0 }
+        Cfproxy429State {
+            until: None,
+            strikes: 0,
+        }
     }
 }
 
@@ -60,7 +65,7 @@ pub struct CfproxyConfig {
     pub user_domain: String,
     pub domains: Vec<String>,
     pub active: String,
-    pub cache_dir: String,
+    pub cache_dir: PathBuf,
 }
 
 pub static CFPROXY: Lazy<RwLock<CfproxyConfig>> = Lazy::new(|| {
@@ -68,7 +73,7 @@ pub static CFPROXY: Lazy<RwLock<CfproxyConfig>> = Lazy::new(|| {
         user_domain: String::new(),
         domains: Vec::new(),
         active: String::new(),
-        cache_dir: String::new(),
+        cache_dir: PathBuf::new(),
     })
 });
 
@@ -144,7 +149,7 @@ pub struct Stats {
     pub connections_tcp_fallback: AtomicI64,
     pub connections_cfproxy: AtomicI64,
     pub connections_http_reject: AtomicI64,
-    pub connections_passthrough: AtomicI64,
+    //    pub connections_passthrough: AtomicI64,
     pub connections_bad: AtomicI64,
     pub ws_errors: AtomicI64,
     pub bytes_up: AtomicI64,
@@ -176,7 +181,10 @@ impl Stats {
     }
 
     pub fn summary_ru(&self) -> String {
-        let mut parts = vec![format!("акт:{}", self.connections_active.load(Ordering::Relaxed))];
+        let mut parts = vec![format!(
+            "активно:{}",
+            self.connections_active.load(Ordering::Relaxed)
+        )];
         let ws = self.connections_ws.load(Ordering::Relaxed);
         if ws > 0 {
             parts.push(format!("ws:{}", ws));
@@ -208,7 +216,7 @@ impl Stats {
         self.connections_tcp_fallback.store(0, Ordering::Relaxed);
         self.connections_cfproxy.store(0, Ordering::Relaxed);
         self.connections_http_reject.store(0, Ordering::Relaxed);
-        self.connections_passthrough.store(0, Ordering::Relaxed);
+        //        self.connections_passthrough.store(0, Ordering::Relaxed);
         self.connections_bad.store(0, Ordering::Relaxed);
         self.ws_errors.store(0, Ordering::Relaxed);
         self.bytes_up.store(0, Ordering::Relaxed);
@@ -241,9 +249,11 @@ fn android_log_line(line: &str) {
         fn __android_log_print(prio: i32, tag: *const i8, fmt: *const i8, ...) -> i32;
     }
     const ANDROID_LOG_INFO: i32 = 4;
-    if let (Ok(tag), Ok(fmt), Ok(msg)) =
-        (CString::new("TgWsProxy"), CString::new("%s"), CString::new(line))
-    {
+    if let (Ok(tag), Ok(fmt), Ok(msg)) = (
+        CString::new("TgWsProxy"),
+        CString::new("%s"),
+        CString::new(line),
+    ) {
         unsafe {
             __android_log_print(
                 ANDROID_LOG_INFO,
@@ -260,7 +270,9 @@ fn android_log_line(_line: &str) {}
 
 fn emit(prefix: &str, msg: &str) {
     let line = format!("{}{}", prefix, msg);
-    eprintln!("{}", line);
+    if LOG_CONSOLE.load(Ordering::Relaxed) {
+        eprintln!("{}", line);
+    }
     android_log_line(&line);
 }
 
@@ -288,8 +300,10 @@ macro_rules! lerror { ($($a:tt)*) => { $crate::config::log_error(&format!($($a)*
 #[macro_export]
 macro_rules! ldebug { ($($a:tt)*) => { $crate::config::log_debug(&format!($($a)*)) }; }
 
-pub fn init_logging(verbose: bool) {
+#[inline]
+pub fn init_logging(verbose: bool, console: bool) {
     LOG_VERBOSE.store(verbose, Ordering::Relaxed);
+    LOG_CONSOLE.store(console, Ordering::Relaxed);
 }
 
 pub fn now_unix_f64() -> f64 {

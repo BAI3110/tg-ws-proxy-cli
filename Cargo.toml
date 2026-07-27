@@ -1,14 +1,10 @@
 [package]
-name = "tgwsproxy"
+name = "tgwsproxy-cli"
 version = "1.0.0"
-edition = "2021"
-
-[lib]
-name = "tgwsproxy"
-crate-type = ["cdylib"]
+edition = "2024"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "sync", "macros", "signal"] }
 tokio-util = "0.7"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
