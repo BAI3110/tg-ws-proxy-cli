@@ -10,7 +10,6 @@ use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use proxy::{WsPool, parse_cidr_pool, run_proxy};
 use rand::RngCore;
-use rand::rngs::OsRng;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -147,10 +146,6 @@ fn main() {
         i += 2;
     }
     drop(args);
-
-    if (*PROXY_SECRET.read()).is_empty() {
-        let _ = set_secret(random_secret_hex());
-    }
 
     set_cf_proxy_cache_dir(cache_dir);
     set_cf_proxy_config(cf_enabled, user_domain);
@@ -337,12 +332,6 @@ Options:
     --no-console               Disable console output
 "
     );
-}
-
-fn random_secret_hex() -> String {
-    let mut bytes = [0u8; 16];
-    OsRng.fill_bytes(&mut bytes);
-    hex::encode(bytes)
 }
 
 #[inline]
