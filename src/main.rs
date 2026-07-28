@@ -70,18 +70,6 @@ fn main() {
     let mut cache_dir: PathBuf =
         PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("TgWsProxyCli");
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::fs::DirBuilder;
-        let cache_path = PathBuf::from(cache_dir.clone());
-        if cache_path.exists() {
-            let dir = DirBuilder::new().create(cache_path);
-            if dir.is_err() {
-                lerror!("{}", dir.unwrap_err());
-            }
-        }
-    }
-
     let args = std::env::args().collect::<Vec<String>>();
     let mut i = 1; // 1 пропускаем имя программы
     while i < args.len() {
