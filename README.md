@@ -14,7 +14,6 @@
 
 - Локальный MTProto-прокси для Telegram.
 - Передача трафика через Cloudflare WebSocket или напрямую к Telegram DC.
-- Кроссплатформенность (Linux, Windows, macOS).
 
 ---
 
