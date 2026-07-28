@@ -33,17 +33,9 @@ Telegram → TG WS Proxy CLI → WSS (через CloudFlare или напрям�
 1. Скачайте бинарный файл со страницы Releases.
 2. Запустите его.
 
-### Linux
-
 ```bash
 chmod +x tg-ws-proxy-cli
 ./tg-ws-proxy-cli
-```
-
-### Windows
-
-```text
-tg-ws-proxy-cli.exe
 ```
 
 После запуска программа выведет параметры локального MTProto-прокси:
