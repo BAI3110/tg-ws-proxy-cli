@@ -239,11 +239,11 @@ pub fn human_bytes(n: i64) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Logger (Android log + stderr, 1-в-1 префиксы)
+//                                  Logger
 // ---------------------------------------------------------------------------
 
 #[cfg(target_os = "android")]
-fn android_log_line(line: &str) {
+fn android_log_line(line: &str, log_level: i32) {
     use std::ffi::CString;
     unsafe extern "C" {
         fn __android_log_print(prio: i32, tag: *const i8, fmt: *const i8, ...) -> i32;
@@ -256,7 +256,7 @@ fn android_log_line(line: &str) {
     ) {
         unsafe {
             __android_log_print(
-                ANDROID_LOG_INFO,
+                log_level,
                 tag.as_ptr() as *const i8,
                 fmt.as_ptr() as *const i8,
                 msg.as_ptr() as *const i8,
@@ -265,29 +265,49 @@ fn android_log_line(line: &str) {
     }
 }
 
-#[cfg(not(target_os = "android"))]
-fn android_log_line(_line: &str) {}
-
-fn emit(prefix: &str, msg: &str) {
+fn emit(prefix: &str, msg: &str, log_level: i32) {
     let line = format!("{}{}", prefix, msg);
     if LOG_CONSOLE.load(Ordering::Relaxed) {
         eprintln!("{}", line);
     }
-    android_log_line(&line);
+
+    #[cfg(target_os = "android")]
+    android_log_line(&line, log_level);
+
+    #[cfg(all(not(target_os = "android"), target_os = "linux"))]
+    {
+        use tracing::{debug, error, info, warn};
+
+        match log_level {
+            5 => {
+                debug!("{}", line);
+            }
+            4 => {
+                info!("{}", line);
+            }
+            3 => {
+                warn!("{}", line);
+            }
+            2 => {
+                error!("{}", line);
+            }
+            _ => {}
+        }
+    }
 }
 
 pub fn log_info(msg: &str) {
-    emit("", msg);
+    emit("", msg, 4);
 }
 pub fn log_warn(msg: &str) {
-    emit("[WARN] ", msg);
+    emit("[WARN] ", msg, 3);
 }
 pub fn log_error(msg: &str) {
-    emit("[ERROR] ", msg);
+    emit("[ERROR] ", msg, 2);
 }
 pub fn log_debug(msg: &str) {
     if LOG_VERBOSE.load(Ordering::Relaxed) {
-        emit("[DEBUG] ", msg);
+        emit("[DEBUG] ", msg, 5);
     }
 }
 
@@ -300,10 +320,27 @@ macro_rules! lerror { ($($a:tt)*) => { $crate::config::log_error(&format!($($a)*
 #[macro_export]
 macro_rules! ldebug { ($($a:tt)*) => { $crate::config::log_debug(&format!($($a)*)) }; }
 
-#[inline]
 pub fn init_logging(verbose: bool, console: bool) {
     LOG_VERBOSE.store(verbose, Ordering::Relaxed);
     LOG_CONSOLE.store(console, Ordering::Relaxed);
+
+    #[cfg(all(not(target_os = "android"), target_os = "linux"))]
+    {
+        use tracing_journald::Layer;
+        use tracing_subscriber::EnvFilter;
+        use tracing_subscriber::prelude::*;
+
+        let filter = if verbose {
+            EnvFilter::new("debug")
+        } else {
+            EnvFilter::new("info")
+        };
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(Layer::new().unwrap())
+            .init();
+    }
 }
 
 pub fn now_unix_f64() -> f64 {
