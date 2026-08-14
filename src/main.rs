@@ -9,17 +9,15 @@ use config::*;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use proxy::{WsPool, parse_cidr_pool, run_proxy};
-use rand::RngCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tokio::task::JoinError;
 use tokio_util::sync::CancellationToken;
 
-const VERSION: &str = "1.0.0";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Глобальный рантайм — никогда не дропается
 static RUNTIME: OnceCell<Runtime> = OnceCell::new();
@@ -34,7 +32,6 @@ fn state_cell() -> &'static Mutex<Option<ProxyState>> {
 #[inline]
 fn runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| {
-        // Многопоточный рантайм, кол-во воркеров адекватно мобиле
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .thread_name("tgwsproxy-rt")
@@ -54,8 +51,8 @@ struct ProxyState {
 fn main() {
     let mut host = "127.0.0.1".to_string();
     let mut port = DEFAULT_PORT;
-    let mut dc_ips = "".to_string();
-    let mut user_domain = "".to_string();
+    let mut dc_ips = String::new();
+    let mut user_domain = String::new();
     let mut verbose = false;
     let mut console = true;
     let mut cf_enabled = false;
@@ -64,14 +61,15 @@ fn main() {
     let mut cache_dir: PathBuf = PathBuf::from("/data/tmp".to_string());
 
     #[cfg(all(target_os = "linux", not(target_os = "android")))]
-    let mut cache_dir: PathBuf = PathBuf::from("/tmp".to_string());
+    let mut cache_dir: PathBuf =
+        PathBuf::from(std::env::var_os("HOME").unwrap()).join(".cache/TgWsProxyCli");
 
     #[cfg(target_os = "windows")]
     let mut cache_dir: PathBuf =
         PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("TgWsProxyCli");
 
     let args = std::env::args().collect::<Vec<String>>();
-    let mut i = 1; // 1 пропускаем имя программы
+    let mut i = 1; // пропускаем имя программы
     while i < args.len() {
         match args[i].as_str() {
             "--help" | "-h" => {
@@ -79,7 +77,7 @@ fn main() {
                 return;
             }
             "--version" | "-V" => {
-                println!("{}", VERSION);
+                println!("{}", APP_VERSION);
                 return;
             }
             "--host" => {
@@ -139,54 +137,39 @@ fn main() {
     set_cf_proxy_config(cf_enabled, user_domain);
     start_proxy(host, port, dc_ips, verbose, console);
 
-    let cell = state_cell();
-    let mut guard = cell.lock();
-    let state = match guard.take() {
-        Some(s) => s,
-        None => {
-            return;
-        }
-    };
+    ctrlc::set_handler(|| {
+        linfo!("\r\nCTRL+C received");
+        stop_proxy();
+        std::process::exit(0);
+    })
+    .unwrap();
 
-    let rt = runtime();
-    let handle = state.handle;
-    let summary_handle = state.summary_handle;
+    loop {
+        let (handle, summary_handle) = {
+            let guard = state_cell().lock();
 
-    rt.block_on(async {
-        let (res, summary_res) = tokio::join!(handle, async {
-            if verbose {
-                if let Some(h) = summary_handle {
-                    return h.await;
+            match guard.as_ref() {
+                Some(state) => {
+                    let mut sh = true;
+                    if let Some(summary_handle) = &state.summary_handle {
+                        sh = summary_handle.is_finished()
+                    }
+                    (state.handle.is_finished(), sh)
                 }
+                None => break,
             }
-            Ok::<(), JoinError>(())
-        });
+        };
 
-        if let Err(err) = res {
-            lerror!("{}", err);
-            return;
+        if handle && summary_handle {
+            break;
         }
 
-        if let Err(err) = summary_res {
-            lerror!("{}", err);
-            return;
-        }
-
-        let _ = res;
-        let _ = summary_res;
-    });
-
+        std::thread::sleep(Duration::from_millis(50));
+    }
     stop_proxy();
 }
 
 fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: bool) {
-    let cell = state_cell();
-    let mut guard = cell.lock();
-
-    if guard.is_some() {
-        return;
-    }
-
     init_logging(verbose, console);
     cfproxy::clear_cfproxy_429_cooldowns();
 
@@ -233,7 +216,7 @@ fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: 
                     tokio::select! {
                         _ = token.cancelled() => break,
                         _ = tokio::time::sleep(Duration::from_secs(60)) => {
-                            ldebug!("{}", STATS.summary());
+                            ldebug!("\n{}", STATS.summary_full());
                         }
                     }
                 }
@@ -254,21 +237,30 @@ fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: 
         }
     }
 
-    *guard = Some(ProxyState {
-        pool,
-        handle,
-        summary_handle,
-        cancel_tasks,
-    });
+    {
+        let cell = state_cell();
+        let mut guard = cell.lock();
+
+        if guard.is_some() {
+            return;
+        }
+        *guard = Some(ProxyState {
+            pool,
+            handle,
+            summary_handle,
+            cancel_tasks,
+        });
+    }
 }
 
 fn stop_proxy() {
-    let cell = state_cell();
-    let mut guard = cell.lock();
+    let state = {
+        let mut guard = state_cell().lock();
 
-    let state = match guard.take() {
-        Some(s) => s,
-        None => return,
+        match guard.take() {
+            Some(s) => s,
+            None => return,
+        }
     };
 
     // graceful shutdown — НЕ дропаем рантайм

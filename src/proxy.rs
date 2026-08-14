@@ -1191,19 +1191,21 @@ pub async fn run_proxy(
     linfo!("  Secret: {}", *PROXY_SECRET.read());
     linfo!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    let cancel_stats = cancel_root.clone();
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
-        interval.tick().await;
-        loop {
-            tokio::select! {
-                _ = cancel_stats.cancelled() => return,
-                _ = interval.tick() => {
-                    linfo!(" {}", STATS.summary_ru());
+    if !LOG_VERBOSE.load(Ordering::Relaxed) {
+        let cancel_stats = cancel_root.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            interval.tick().await;
+            loop {
+                tokio::select! {
+                    _ = cancel_stats.cancelled() => return,
+                    _ = interval.tick() => {
+                        linfo!(" {}", STATS.summary());
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     loop {
         tokio::select! {

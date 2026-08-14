@@ -50,6 +50,7 @@ pub struct Cfproxy429State {
 }
 
 impl Default for Cfproxy429State {
+    #[inline]
     fn default() -> Self {
         Cfproxy429State {
             until: None,
@@ -161,11 +162,11 @@ pub struct Stats {
 pub static STATS: Lazy<Stats> = Lazy::new(Stats::default);
 
 impl Stats {
-    pub fn summary(&self) -> String {
+    pub fn summary_full(&self) -> String {
         let ph = self.pool_hits.load(Ordering::Relaxed);
         let pm = self.pool_misses.load(Ordering::Relaxed);
         format!(
-            "total={} active={} ws={} tcp_fb={} cf={} bad={} err={} pool={}/{} up={} down={}",
+            "total={} active={} ws={} tcp_fb={} cf={} bad={} err={} pool={}/{} ↑{} ↓{}",
             self.connections_total.load(Ordering::Relaxed),
             self.connections_active.load(Ordering::Relaxed),
             self.connections_ws.load(Ordering::Relaxed),
@@ -180,18 +181,21 @@ impl Stats {
         )
     }
 
-    pub fn summary_ru(&self) -> String {
+    pub fn summary(&self) -> String {
         let mut parts = vec![format!(
-            "активно:{}",
+            "active:{}",
             self.connections_active.load(Ordering::Relaxed)
         )];
-        let ws = self.connections_ws.load(Ordering::Relaxed);
-        if ws > 0 {
-            parts.push(format!("ws:{}", ws));
-        }
-        let cf = self.connections_cfproxy.load(Ordering::Relaxed);
-        if cf > 0 {
-            parts.push(format!("cf:{}", cf));
+        if CFPROXY_ENABLED.load(Ordering::Relaxed) {
+            let cf = self.connections_cfproxy.load(Ordering::Relaxed);
+            if cf > 0 {
+                parts.push(format!("cf:{}", cf));
+            }
+        } else {
+            let ws = self.connections_ws.load(Ordering::Relaxed);
+            if ws > 0 {
+                parts.push(format!("ws:{}", ws));
+            }
         }
         let tcp = self.connections_tcp_fallback.load(Ordering::Relaxed);
         if tcp > 0 {
@@ -199,7 +203,7 @@ impl Stats {
         }
         let err = self.ws_errors.load(Ordering::Relaxed);
         if err > 0 {
-            parts.push(format!("ош:{}", err));
+            parts.push(format!("bad:{}", err));
         }
         parts.push(format!(
             "↑{} ↓{}",
@@ -216,7 +220,7 @@ impl Stats {
         self.connections_tcp_fallback.store(0, Ordering::Relaxed);
         self.connections_cfproxy.store(0, Ordering::Relaxed);
         self.connections_http_reject.store(0, Ordering::Relaxed);
-        //        self.connections_passthrough.store(0, Ordering::Relaxed);
+        // self.connections_passthrough.store(0, Ordering::Relaxed);
         self.connections_bad.store(0, Ordering::Relaxed);
         self.ws_errors.store(0, Ordering::Relaxed);
         self.bytes_up.store(0, Ordering::Relaxed);
@@ -343,6 +347,7 @@ pub fn init_logging(verbose: bool, console: bool) {
     }
 }
 
+#[inline]
 pub fn now_unix_f64() -> f64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -351,6 +356,7 @@ pub fn now_unix_f64() -> f64 {
         .unwrap_or(0.0)
 }
 
+#[inline]
 pub fn now_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

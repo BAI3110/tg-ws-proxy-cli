@@ -330,7 +330,7 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
 
     let resp = match client
         .get(CFPROXY_DOMAINS_URL)
-        .header("User-Agent", "Mozilla/5.0 tg-ws-proxy-android")
+        .header("User-Agent", "Mozilla/5.0 tg-ws-proxy-cli")
         .send()
         .await
     {
