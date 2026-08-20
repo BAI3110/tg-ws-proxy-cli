@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::time::{Duration, Instant};
+use tracing_subscriber::layer::SubscriberExt;
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -50,7 +51,6 @@ pub struct Cfproxy429State {
 }
 
 impl Default for Cfproxy429State {
-    #[inline]
     fn default() -> Self {
         Cfproxy429State {
             until: None,
@@ -246,57 +246,34 @@ pub fn human_bytes(n: i64) -> String {
 //                                  Logger
 // ---------------------------------------------------------------------------
 
-#[cfg(target_os = "android")]
-fn android_log_line(line: &str, log_level: i32) {
-    use std::ffi::CString;
-    unsafe extern "C" {
-        fn __android_log_print(prio: i32, tag: *const i8, fmt: *const i8, ...) -> i32;
-    }
-    const ANDROID_LOG_INFO: i32 = 4;
-    if let (Ok(tag), Ok(fmt), Ok(msg)) = (
-        CString::new("TgWsProxy"),
-        CString::new("%s"),
-        CString::new(line),
-    ) {
-        unsafe {
-            __android_log_print(
-                log_level,
-                tag.as_ptr() as *const i8,
-                fmt.as_ptr() as *const i8,
-                msg.as_ptr() as *const i8,
-            );
-        }
-    }
-}
+const TAG: &str = "TgWsProxy";
 
 fn emit(prefix: &str, msg: &str, log_level: i32) {
+    use tracing::{debug, error, info, warn};
+
     let line = format!("{}{}", prefix, msg);
     if LOG_CONSOLE.load(Ordering::Relaxed) {
         eprintln!("{}", line);
     }
 
-    #[cfg(target_os = "android")]
-    android_log_line(&line, log_level);
-
-    #[cfg(all(not(target_os = "android"), target_os = "linux"))]
-    {
-        use tracing::{debug, error, info, warn};
-
-        match log_level {
-            5 => {
-                debug!("{}", line);
-            }
-            4 => {
-                info!("{}", line);
-            }
-            3 => {
-                warn!("{}", line);
-            }
-            2 => {
-                error!("{}", line);
-            }
-            _ => {}
+    match log_level {
+        5 => {
+            debug!("{}", line);
         }
+        4 => {
+            info!("{}", line);
+        }
+        3 => {
+            warn!("{}", line);
+        }
+        2 => {
+            error!("{}", line);
+        }
+        1 => {
+            error!("{}", line);
+            crate::exit();
+        }
+        _ => {}
     }
 }
 
@@ -314,6 +291,9 @@ pub fn log_debug(msg: &str) {
         emit("[DEBUG] ", msg, 5);
     }
 }
+pub fn log_fatal(msg: &str) {
+    emit("[FATAL] ", msg, 1);
+}
 
 #[macro_export]
 macro_rules! linfo  { ($($a:tt)*) => { $crate::config::log_info(&format!($($a)*)) }; }
@@ -323,31 +303,43 @@ macro_rules! lwarn  { ($($a:tt)*) => { $crate::config::log_warn(&format!($($a)*)
 macro_rules! lerror { ($($a:tt)*) => { $crate::config::log_error(&format!($($a)*)) }; }
 #[macro_export]
 macro_rules! ldebug { ($($a:tt)*) => { $crate::config::log_debug(&format!($($a)*)) }; }
+#[macro_export]
+macro_rules! lfatal { ($($a:tt)*) => { $crate::config::log_fatal(&format!($($a)*)) }; }
 
 pub fn init_logging(verbose: bool, console: bool) {
+    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let filter = if verbose {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::new("info")
+    };
+
+    let reg = tracing_subscriber::registry().with(filter);
+
+    #[cfg(target_os = "linux")]
+    {
+        reg.with(
+            tracing_journald::layer()
+                .unwrap()
+                .with_syslog_identifier(TAG.to_string()),
+        )
+        .init();
+    }
+    #[cfg(target_os = "android")]
+    {
+        reg.with(tracing_android::layer(TAG).unwrap()).init();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let layer = reg.with(tracing_layer_win_eventlog::EventLogLayer::new(TAG));
+    }
+
     LOG_VERBOSE.store(verbose, Ordering::Relaxed);
     LOG_CONSOLE.store(console, Ordering::Relaxed);
-
-    #[cfg(all(not(target_os = "android"), target_os = "linux"))]
-    {
-        use tracing_journald::Layer;
-        use tracing_subscriber::EnvFilter;
-        use tracing_subscriber::prelude::*;
-
-        let filter = if verbose {
-            EnvFilter::new("debug")
-        } else {
-            EnvFilter::new("info")
-        };
-
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(Layer::new().unwrap())
-            .init();
-    }
 }
 
-#[inline]
 pub fn now_unix_f64() -> f64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -356,7 +348,6 @@ pub fn now_unix_f64() -> f64 {
         .unwrap_or(0.0)
 }
 
-#[inline]
 pub fn now_unix() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

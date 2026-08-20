@@ -1200,7 +1200,11 @@ pub async fn run_proxy(
                 tokio::select! {
                     _ = cancel_stats.cancelled() => return,
                     _ = interval.tick() => {
-                        linfo!(" {}", STATS.summary());
+                        if LOG_VERBOSE.load(Ordering::Relaxed) {
+                            println!("{}", STATS.summary_full());
+                        } else {
+                            println!(" {}", STATS.summary());
+                        }
                     }
                 }
             }

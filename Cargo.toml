@@ -20,21 +20,23 @@ hex = "0.4"
 rand = "0.8"
 byteorder = "1"
 socket2 = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # HTTP-клиент для DoH/GitHub без TLS-дублирования: используем reqwest на rustls
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-ctrlc = "3.5.2"
+ctrlc = "3"
 
 [target.'cfg(target_os = "android")'.dependencies]
-android_logger = "0.14"
-log = "0.4"
+tracing-android = "0.2"
 
-[target.'cfg(all(not(target_os = "android"), target_os = "linux"))'.dependencies]
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+[target.'cfg(target_os = "linux")'.dependencies]
 tracing-journald = "0.3"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tracing-layer-win-eventlog = "1"
 
 [profile.release]
 opt-level = "z"

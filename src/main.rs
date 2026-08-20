@@ -24,12 +24,10 @@ static RUNTIME: OnceCell<Runtime> = OnceCell::new();
 
 static STATE: OnceCell<Mutex<Option<ProxyState>>> = OnceCell::new();
 
-#[inline]
 fn state_cell() -> &'static Mutex<Option<ProxyState>> {
     STATE.get_or_init(|| Mutex::new(None))
 }
 
-#[inline]
 fn runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -44,7 +42,6 @@ fn runtime() -> &'static Runtime {
 struct ProxyState {
     pool: Arc<WsPool>,
     handle: tokio::task::JoinHandle<()>,
-    summary_handle: Option<tokio::task::JoinHandle<()>>,
     cancel_tasks: CancellationToken,
 }
 
@@ -60,9 +57,10 @@ fn main() {
     #[cfg(target_os = "android")]
     let mut cache_dir: PathBuf = PathBuf::from("/data/tmp".to_string());
 
-    #[cfg(all(target_os = "linux", not(target_os = "android")))]
-    let mut cache_dir: PathBuf =
-        PathBuf::from(std::env::var_os("HOME").unwrap()).join(".cache/TgWsProxyCli");
+    #[cfg(target_os = "linux")]
+    let mut cache_dir: PathBuf = PathBuf::from(std::env::var_os("HOME").unwrap())
+        .join(".cache")
+        .join("TgWsProxyCli");
 
     #[cfg(target_os = "windows")]
     let mut cache_dir: PathBuf =
@@ -125,7 +123,7 @@ fn main() {
                 console = false;
             }
             _ => {
-                lerror!("Unknown arg {}", args[i]);
+                eprintln!("Unknown arg {}", args[i]);
                 return;
             }
         }
@@ -133,34 +131,29 @@ fn main() {
     }
     drop(args);
 
+    ctrlc::set_handler(|| {
+        println!("\r\nCTRL+C received");
+        exit();
+    })
+    .unwrap_or_else(|e| {
+        eprintln!("Bind CTRL+C error: {}", e);
+        std::process::exit(0);
+    });
+
     set_cf_proxy_cache_dir(cache_dir);
     set_cf_proxy_config(cf_enabled, user_domain);
     start_proxy(host, port, dc_ips, verbose, console);
-
-    ctrlc::set_handler(|| {
-        linfo!("\r\nCTRL+C received");
-        stop_proxy();
-        std::process::exit(0);
-    })
-    .unwrap();
-
     loop {
-        let (handle, summary_handle) = {
+        let handle = {
             let guard = state_cell().lock();
 
             match guard.as_ref() {
-                Some(state) => {
-                    let mut sh = true;
-                    if let Some(summary_handle) = &state.summary_handle {
-                        sh = summary_handle.is_finished()
-                    }
-                    (state.handle.is_finished(), sh)
-                }
+                Some(state) => state.handle.is_finished(),
                 None => break,
             }
         };
 
-        if handle && summary_handle {
+        if handle {
             break;
         }
 
@@ -198,41 +191,26 @@ fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: 
                 if let Err(e) =
                     run_proxy(pool_task, host_task, port, map_task, cancel_root, listener).await
                 {
-                    lerror!("listen on {}: {}", addr, e);
+                    lfatal!("listen error on {}: {}", addr, e);
                 }
             }
             Err(e) => {
-                let _ = tx.send(Err(format!("listen on {}: {}", addr, e)));
+                let _ = tx.send(Err(format!("listen error on {}: {}", addr, e)));
             }
         }
     });
 
-    let mut summary_handle = None;
-    if verbose {
-        summary_handle = Some({
-            let token = cancel_tasks.clone();
-            rt.spawn(async move {
-                loop {
-                    tokio::select! {
-                        _ = token.cancelled() => break,
-                        _ = tokio::time::sleep(Duration::from_secs(60)) => {
-                            ldebug!("\n{}", STATS.summary_full());
-                        }
-                    }
-                }
-            })
-        });
-    }
-
     // Ждём результат bind
     match rx.recv() {
         Ok(Ok(())) => {}
-        Ok(Err(_)) => {
+        Ok(Err(e)) => {
             handle.abort();
+            lfatal!("{}", e);
             return;
         }
-        Err(_) => {
+        Err(e) => {
             handle.abort();
+            lfatal!("{}", e);
             return;
         }
     }
@@ -247,7 +225,6 @@ fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: 
         *guard = Some(ProxyState {
             pool,
             handle,
-            summary_handle,
             cancel_tasks,
         });
     }
@@ -270,13 +247,9 @@ fn stop_proxy() {
     let rt = runtime();
     let pool = state.pool.clone();
     let handle = state.handle;
-    let summary_handle = state.summary_handle;
     rt.block_on(async move {
         linfo!("StopProxy: waiting for proxy tasks to finish (max 2s)");
         let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
-        if summary_handle.is_some() {
-            summary_handle.unwrap().abort();
-        }
         linfo!("StopProxy: closing pool connections");
         pool.close_all().await;
         linfo!("StopProxy: done");
@@ -314,19 +287,10 @@ Options:
     );
 }
 
-#[inline]
 fn set_pool_size(size: i32) {
-    let mut n = size;
-    if n < 2 {
-        n = 2;
-    }
-    if n > 16 {
-        n = 16;
-    }
-    POOL_SIZE.store(n, Ordering::Relaxed);
+    POOL_SIZE.store(size.clamp(2, 16), Ordering::Relaxed);
 }
 
-#[inline]
 fn set_cf_proxy_cache_dir(cache_dir: PathBuf) {
     CFPROXY.write().cache_dir = cache_dir;
 }
@@ -342,7 +306,7 @@ fn set_cf_proxy_config(enabled: bool, user_domain: String) {
 }
 
 fn set_secret(secret: String) -> Result<(), String> {
-    if secret.len() != 32 {
+    if secret.len() < 32 {
         return Err("the secret is too short".to_string());
     }
     if hex::decode(&secret).is_err() {
@@ -350,4 +314,9 @@ fn set_secret(secret: String) -> Result<(), String> {
     }
     *PROXY_SECRET.write() = secret;
     Ok(())
+}
+
+pub fn exit() {
+    stop_proxy();
+    std::process::exit(0);
 }
