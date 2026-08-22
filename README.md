@@ -2,7 +2,7 @@
   
   # Telegram WS Proxy CLI
 <br>
-  <img src="https://img.shields.io/badge/Rust-1.70+-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust Version">
+  <img src="https://img.shields.io/badge/Rust-1.90+-000000?style=for-the-badge&logo=rust&logoColor=white" alt="Rust Version">
 <br>
 </div>
 
