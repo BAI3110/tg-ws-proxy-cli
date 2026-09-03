@@ -140,9 +140,10 @@ fn main() {
         std::process::exit(0);
     });
 
+    init_logging(verbose, console);
     set_cf_proxy_cache_dir(cache_dir);
     set_cf_proxy_config(cf_enabled, user_domain);
-    start_proxy(host, port, dc_ips, verbose, console);
+    start_proxy(host, port, dc_ips);
     loop {
         let handle = {
             let guard = state_cell().lock();
@@ -162,8 +163,7 @@ fn main() {
     stop_proxy();
 }
 
-fn start_proxy(host: String, port: u16, dc_ips: String, verbose: bool, console: bool) {
-    init_logging(verbose, console);
+fn start_proxy(host: String, port: u16, dc_ips: String) {
     cfproxy::clear_cfproxy_429_cooldowns();
 
     cfproxy::init_cfproxy_domains();
