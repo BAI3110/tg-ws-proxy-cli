@@ -12,8 +12,14 @@ interface ProxyLibrary : Library {
     fun StartProxy(host: String, port: Int, dcIps: String, secret: String, verbose: Int): Int
     fun StopProxy(): Int
     fun SetPoolSize(size: Int)
+    fun SetBufferSizeKb(kb: Int)
     fun SetCfProxyCacheDir(cacheDir: String)
     fun SetCfProxyConfig(enabled: Int, priority: Int, userDomain: String)
+    fun SetCfWorkerDomains(domains: String)
+    fun SetFakeTlsDomain(domain: String)
+    fun SetDisableSecure(v: Int)
+    fun SetForceTestDc(v: Int)
+    fun SetProxyProtocol(v: Int)
     fun GetSecretWithPrefix(): Pointer?
     fun GetStats(): Pointer?
     fun FreeString(p: Pointer)
@@ -32,6 +38,10 @@ object NativeProxy {
         ProxyLibrary.INSTANCE.SetPoolSize(size)
     }
 
+    fun setBufferSizeKb(kb: Int) {
+        ProxyLibrary.INSTANCE.SetBufferSizeKb(kb)
+    }
+
     fun setCfProxyCacheDir(cacheDir: String) {
         ProxyLibrary.INSTANCE.SetCfProxyCacheDir(cacheDir)
     }
@@ -42,6 +52,26 @@ object NativeProxy {
             if (priority) 1 else 0,
             userDomain
         )
+    }
+
+    fun setCfWorkerDomains(domains: String) {
+        ProxyLibrary.INSTANCE.SetCfWorkerDomains(domains)
+    }
+
+    fun setFakeTlsDomain(domain: String) {
+        ProxyLibrary.INSTANCE.SetFakeTlsDomain(domain)
+    }
+
+    fun setDisableSecure(v: Boolean) {
+        ProxyLibrary.INSTANCE.SetDisableSecure(if (v) 1 else 0)
+    }
+
+    fun setForceTestDc(v: Boolean) {
+        ProxyLibrary.INSTANCE.SetForceTestDc(if (v) 1 else 0)
+    }
+
+    fun setProxyProtocol(v: Boolean) {
+        ProxyLibrary.INSTANCE.SetProxyProtocol(if (v) 1 else 0)
     }
 
     /** Returns the full secret with correct prefix (dd or ee+domain_hex) */

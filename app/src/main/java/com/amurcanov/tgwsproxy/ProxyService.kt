@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
@@ -13,11 +12,14 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import android.widget.Toast
-import androidx.annotation.UiThread
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Duration.Companion.milliseconds
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 
 class ProxyService : Service() {
 
@@ -123,7 +125,7 @@ class ProxyService : Service() {
             }
         } catch (_: Exception) {
             // (Если надо, то тут может быть IOException или SecurityException) (IOException добавляет новый import так что "_", по-моему, лучше)
-            return false;
+            return false
         }
     }
 
@@ -192,7 +194,7 @@ class ProxyService : Service() {
                     Log.e(TAG, "StartProxy returned error code: $result")
                     serviceScope.launch {
                         updateNotification(getString(R.string.notification_start_error_code, result), force = true)
-                        delay(3000)
+                        delay(3000.milliseconds)
                         stopProxy()
                     }
                 }
@@ -200,7 +202,7 @@ class ProxyService : Service() {
                 Log.e(TAG, "Failed to start proxy via JNA", e)
                 serviceScope.launch {
                     updateNotification(getString(R.string.notification_error, e.message ?: ""), force = true)
-                    delay(3000)
+                    delay(3000.milliseconds)
                     stopProxy()
                 }
             }
@@ -216,13 +218,13 @@ class ProxyService : Service() {
             // WakeLock refresh sub-job: re-acquire before system timeout
             launch {
                 while (isActive) {
-                    delay(WAKELOCK_REFRESH_MS)
+                    delay(WAKELOCK_REFRESH_MS.milliseconds)
                     refreshWakeLock()
                 }
             }
 
             while (isActive) {
-                delay(STATS_UPDATE_MS)
+                delay(STATS_UPDATE_MS.milliseconds)
                 if (_isRunning.value && !stopInProgress) {
                     try {
                         val rawStats = NativeProxy.getStats() ?: continue
@@ -252,7 +254,7 @@ class ProxyService : Service() {
         lastNotificationContent = content
         lastNotificationAtMs = now
         try {
-            val manager = getSystemService(NotificationManager::class.java)
+            val manager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
             manager?.notify(NOTIFICATION_ID, createNotification(content))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to update notification", e)
@@ -276,7 +278,7 @@ class ProxyService : Service() {
             requestNativeStop("restart")
             releaseWakeLock()
             updateRunningState(false)
-            delay(350)
+            delay(350.milliseconds)
 
             startProxy(
                 bindIp = lastBindIp,
@@ -354,7 +356,7 @@ class ProxyService : Service() {
             start()
         }
 
-        val finished = withTimeoutOrNull(NATIVE_STOP_WAIT_MS) {
+        val finished = withTimeoutOrNull(NATIVE_STOP_WAIT_MS.milliseconds) {
             completed.await()
             true
         } ?: false
@@ -380,7 +382,7 @@ class ProxyService : Service() {
 
     private fun acquireWakeLock() {
         try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "TgWsProxy::ServiceWakeLock"
@@ -404,7 +406,7 @@ class ProxyService : Service() {
                     it.release()
                 }
             }
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val powerManager = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
                 "TgWsProxy::ServiceWakeLock"
@@ -450,9 +452,9 @@ class ProxyService : Service() {
                 setSound(null, null)
                 enableVibration(false)
                 enableLights(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
-            val manager = getSystemService(NotificationManager::class.java)
+            val manager = getSystemService(NOTIFICATION_SERVICE) as? NotificationManager
             manager?.createNotificationChannel(serviceChannel)
         }
     }
