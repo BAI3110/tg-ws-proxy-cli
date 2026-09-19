@@ -1,0 +1,164 @@
+name: Android Build & Release
+
+# Сборка нативного Rust-движка (cargo-ndk) + APK (Gradle).
+# Без секретов кейстора release-сборка подписывается debug-ключом
+# (см. app/build.gradle.kts) — для прод-подписи задайте секреты:
+# ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Create GitHub Release?'
+        type: boolean
+        required: true
+        default: false
+      version:
+        description: 'Release version tag (e.g. v1.2.3-android)'
+        required: false
+        default: 'v1.2.3-android'
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: 27.0.12077973
+  JAVA_VERSION: '17'
+
+jobs:
+  rust-check:
+    name: Rust check (host)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo check
+        run: cargo check --lib --locked
+
+  build:
+    name: Native libs + APK
+    runs-on: windows-latest
+    needs: rust-check
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Setup Android SDK/NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform, build-tools and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;${NDK_VERSION}"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install cargo-ndk
+        shell: bash
+        run: cargo install cargo-ndk
+
+      - name: Build native libs (arm64-v8a, armeabi-v7a)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo ndk -t arm64-v8a --platform 24 \
+            -o app/src/main/jniLibs build --release
+          cargo ndk -t armeabi-v7a --platform 21 \
+            -o app/src/main/jniLibs build --release
+          ls -la app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/armeabi-v7a
+
+      - name: Drop local.properties (CI uses env-based SDK detection)
+        shell: pwsh
+        run: |
+          if (Test-Path local.properties) { Remove-Item local.properties -Force }
+
+      - name: Restore release keystore (optional)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("release.keystore", [Convert]::FromBase64String($env:KEYSTORE_B64))
+          @(
+            "KEYSTORE_FILE=../release.keystore",
+            "KEYSTORE_PASSWORD=$($env:KEYSTORE_PASS)",
+            "KEY_ALIAS=$($env:KEY_ALIAS)",
+            "KEY_PASSWORD=$($env:KEY_PASS)"
+          ) | Out-File -FilePath local.properties -Append -Encoding ascii
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Build release APKs
+        shell: pwsh
+        run: .\gradlew.bat assembleRelease --no-daemon
+
+      - name: Collect APKs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $flavors = @('arm32', 'arm64', 'universal')
+          foreach ($f in $flavors) {
+            $src = Get-ChildItem "app\build\outputs\apk\$f\release\*.apk" | Select-Object -First 1
+            if ($null -eq $src) { throw "APK not found for flavor $f" }
+            Copy-Item $src.FullName "dist\tg-ws-proxy-android-$f.apk"
+          }
+          Get-ChildItem dist\*.apk | ForEach-Object { Write-Output "$($_.Name) [$($_.Length) bytes]" }
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tg-ws-proxy-android-apks
+          path: dist/*.apk
+
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: >-
+      ${{ startsWith(github.ref, 'refs/tags/v') ||
+          (github.event_name == 'workflow_dispatch' &&
+           github.event.inputs.make_release == 'true') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: tg-ws-proxy-android-apks
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.version }}
+          name: TG WS Proxy Android ${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.version }}
+          files: dist/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

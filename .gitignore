@@ -1,5 +1,35 @@
-.idea/
+# Локальный референс-оригинал (не коммитим)
 tg-ws-proxy-main/
+
+# Gradle / Android build outputs
 .gradle/
 build/
-gradle/
+app/build/
+app/release/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+
+# Native libs собираются из Rust через build_so.bat / CI — не коммитим бинарники
+app/src/main/jniLibs/
+
+# Локальная конфигурация и секреты — НЕ коммитить
+local.properties
+*.jks
+*.keystore
+release.keystore
+gradle/gradle-daemon-jvm.properties
+
+# Rust
+target/
+**/*.rs.bk
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
