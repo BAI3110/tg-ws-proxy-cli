@@ -2,6 +2,7 @@
 tg-ws-proxy-main/
 
 # Gradle / Android build outputs
+.kotlin/
 .gradle/
 build/
 app/build/

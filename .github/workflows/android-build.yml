@@ -97,9 +97,12 @@ jobs:
           if (Test-Path local.properties) { Remove-Item local.properties -Force }
 
       - name: Restore release keystore (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         shell: pwsh
         run: |
+          if ([string]::IsNullOrEmpty($env:KEYSTORE_B64)) {
+            Write-Output "No keystore secret, release will use debug signing"
+            exit 0
+          }
           [IO.File]::WriteAllBytes("release.keystore", [Convert]::FromBase64String($env:KEYSTORE_B64))
           @(
             "KEYSTORE_FILE=../release.keystore",
