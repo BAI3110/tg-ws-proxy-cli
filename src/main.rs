@@ -162,7 +162,8 @@ fn main() {
 
         std::thread::sleep(Duration::from_millis(50));
     }
-    stop_proxy();
+    // ожидаем 4 секунды для корректного завершения программы
+    std::thread::sleep(Duration::from_secs(4));
 }
 
 fn start_proxy(host: String, port: u16, dc_ips: String) {
