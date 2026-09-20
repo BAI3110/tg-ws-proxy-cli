@@ -2,13 +2,14 @@ mod balancer;
 mod cfproxy;
 mod config;
 mod crypto;
+mod faketls;
 mod proxy;
 mod ws;
 
 use config::*;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use proxy::{WsPool, parse_cidr_pool, run_proxy};
+use proxy::{parse_cidr_pool, run_proxy};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,10 +18,18 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
 
+use crate::proxy::ProxyPools;
+
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Глобальный рантайм — никогда не дропается
 static RUNTIME: OnceCell<Runtime> = OnceCell::new();
+
+struct ProxyState {
+    pools: Arc<ProxyPools>,
+    handle: tokio::task::JoinHandle<()>,
+    cancel_tasks: CancellationToken,
+}
 
 static STATE: OnceCell<Mutex<Option<ProxyState>>> = OnceCell::new();
 
@@ -37,12 +46,6 @@ fn runtime() -> &'static Runtime {
             .build()
             .expect("failed to build global tokio runtime")
     })
-}
-
-struct ProxyState {
-    pool: Arc<WsPool>,
-    handle: tokio::task::JoinHandle<()>,
-    cancel_tasks: CancellationToken,
 }
 
 fn main() {
@@ -172,12 +175,12 @@ fn start_proxy(host: String, port: u16, dc_ips: String) {
 
     let rt = runtime();
     let cancel_tasks = CancellationToken::new();
-    let pool = Arc::new(WsPool::new(cancel_tasks.clone()));
+    let pools = Arc::new(ProxyPools::new(cancel_tasks.clone()));
 
     // Канал готовности: ждём успешного bind перед возвратом
     let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
 
-    let pool_task = pool.clone();
+    let pools_task = pools.clone();
     let host_task = host.clone();
     let map_task = dc_opt_map.clone();
     let cancel_root = cancel_tasks.clone();
@@ -189,13 +192,13 @@ fn start_proxy(host: String, port: u16, dc_ips: String) {
             Ok(listener) => {
                 let _ = tx.send(Ok(()));
                 if let Err(e) =
-                    run_proxy(pool_task, host_task, port, map_task, cancel_root, listener).await
+                    run_proxy(pools_task, host_task, port, map_task, cancel_root, listener).await
                 {
-                    lfatal!("listen error on {}: {}", addr, e);
+                    lerror!("listen on {}: {}", addr, e);
                 }
             }
             Err(e) => {
-                let _ = tx.send(Err(format!("listen error on {}: {}", addr, e)));
+                let _ = tx.send(Err(format!("listen on {}: {}", addr, e)));
             }
         }
     });
@@ -223,7 +226,7 @@ fn start_proxy(host: String, port: u16, dc_ips: String) {
             return;
         }
         *guard = Some(ProxyState {
-            pool,
+            pools,
             handle,
             cancel_tasks,
         });
@@ -245,7 +248,7 @@ fn stop_proxy() {
     state.cancel_tasks.cancel();
 
     let rt = runtime();
-    let pool = state.pool.clone();
+    let pool = state.pools.clone();
     let handle = state.handle;
     rt.block_on(async move {
         linfo!("StopProxy: waiting for proxy tasks to finish (max 2s)");
@@ -258,7 +261,9 @@ fn stop_proxy() {
     STATS.reset();
     WS_BLACKLIST.write().clear();
     DC_FAIL_UNTIL.write().clear();
+    IP_FAIL_UNTIL.write().clear();
     cfproxy::clear_cfproxy_429_cooldowns();
+    proxy::set_ws_pool_fronting_first(true);
 
     linfo!("StopProxy: exit");
 }

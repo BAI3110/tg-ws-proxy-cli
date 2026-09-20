@@ -1,1 +1,5 @@
-/target
+# Локальный референс-оригинал (не коммитим)
+tg-ws-proxy-main/
+# Rust
+target/
+**/*.rs.bk
