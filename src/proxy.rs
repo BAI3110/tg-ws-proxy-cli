@@ -1,7 +1,6 @@
 use crate::cfproxy::*;
 use crate::config::*;
 use crate::crypto::*;
-use crate::faketls;
 use crate::ws::*;
 use crate::{ldebug, linfo, lwarn};
 use byteorder::{ByteOrder, LittleEndian};
@@ -1620,48 +1619,6 @@ pub async fn handle_client(
         }
     }
 
-    // FakeTLS (ee-secret): первый байт решает всё — как _read_client_init.
-    let masking = FAKE_TLS_DOMAIN.read().clone();
-    if !masking.is_empty() {
-        let mut first = [0u8; 1];
-        match tokio::time::timeout(Duration::from_secs(10), conn.read_exact(&mut first)).await {
-            Ok(Ok(_)) => {}
-            _ => {
-                ldebug!("[{}] client disconnected before handshake", label);
-                return;
-            }
-        }
-        if first[0] == faketls::TLS_RECORD_HANDSHAKE {
-            match faketls::server_handshake(conn, first[0], &secret_bytes, &masking, &label).await {
-                Some(plain) => {
-                    serve_core(
-                        &pools,
-                        plain.read,
-                        plain.write,
-                        label,
-                        secret_bytes,
-                        cancel_token,
-                    )
-                    .await;
-                }
-                None => {}
-            }
-            return;
-        } else {
-            ldebug!(
-                "[{}] non-TLS byte 0x{:02X} -> HTTP redirect",
-                label,
-                first[0]
-            );
-            let redirect = format!(
-                "HTTP/1.1 301 Moved Permanently\r\nLocation: https://{}/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                masking
-            );
-            let _ = conn.write_all(redirect.as_bytes()).await;
-            return;
-        }
-    }
-
     let (conn_read, conn_write) = tokio::io::split(conn);
     serve_core(
         &pools,
@@ -2219,9 +2176,8 @@ pub async fn run_proxy(
 
     linfo!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     linfo!("  TG WS Proxy запущен");
-    linfo!("  Адрес: {}", host);
-    linfo!("  Порт: {}", port);
     linfo!("  Secret: {}", *PROXY_SECRET.read());
+    linfo!("  Адрес: {}:{}", host, port);
     linfo!("  Target DC IPs:");
     let mut dcs: Vec<i32> = dc_opt_map.keys().copied().collect();
     dcs.sort();

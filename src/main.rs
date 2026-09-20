@@ -2,7 +2,6 @@ mod balancer;
 mod cfproxy;
 mod config;
 mod crypto;
-mod faketls;
 mod proxy;
 mod ws;
 
@@ -319,6 +318,26 @@ fn set_secret(secret: String) -> Result<(), String> {
     }
     *PROXY_SECRET.write() = secret;
     Ok(())
+}
+
+fn set_cf_worker_domains(domains: &str) {
+    *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(domains);
+}
+
+fn set_fake_tls_domain(domain: &str) {
+    *FAKE_TLS_DOMAIN.write() = domain.trim().to_string();
+}
+
+fn set_disable_secure(value: bool) {
+    DISABLE_SECURE.store(value, Ordering::Relaxed);
+}
+
+fn set_force_test_dc(value: bool) {
+    FORCE_TEST_DC.store(value, Ordering::Relaxed);
+}
+
+fn set_proxy_protocol(value: bool) {
+    PROXY_PROTOCOL.store(value, Ordering::Relaxed);
 }
 
 pub fn exit() {

@@ -69,6 +69,7 @@ pub const WS_PATH_TEST: &str = "/apiws_test";
 
 pub const CFPROXY_CACHE_FILE_NAME: &str = "cfproxy-domains-cache.txt";
 pub const CFPROXY_ACTIVE_FILE_NAME: &str = "cfproxy-active-domain.txt";
+
 // Оригинал обновляет пул раз в час (3600с) фоновым потоком.
 pub const CFPROXY_REFRESH_INTERVAL: Duration = Duration::from_secs(3600);
 pub const CFPROXY_MIN_VALID_DOMAINS: usize = 3;
@@ -84,6 +85,7 @@ pub static BUFFER_SIZE: AtomicI32 = AtomicI32::new(256 * 1024);
 pub static POOL_SIZE: AtomicI32 = AtomicI32::new(DEFAULT_POOL_SZ);
 pub static LOG_VERBOSE: AtomicBool = AtomicBool::new(false);
 pub static LOG_CONSOLE: AtomicBool = AtomicBool::new(true);
+
 // proxy/config.py::ProxyConfig — мобильные эквиваленты
 pub static DISABLE_SECURE: AtomicBool = AtomicBool::new(false);
 pub static FORCE_TEST_DC: AtomicBool = AtomicBool::new(false);
@@ -331,9 +333,9 @@ pub struct Stats {
     pub connections_tcp_fallback: AtomicI64,
     pub connections_cfproxy: AtomicI64,
     pub connections_fronting: AtomicI64,
+    pub connections_bad: AtomicI64,
     pub connections_masked: AtomicI64,
     pub connections_http_reject: AtomicI64,
-    pub connections_bad: AtomicI64,
     pub connections_passthrough: AtomicI64,
     pub ws_errors: AtomicI64,
     pub bytes_up: AtomicI64,
