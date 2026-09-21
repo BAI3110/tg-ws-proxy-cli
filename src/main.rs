@@ -89,7 +89,7 @@ fn main() {
             "--secret" => {
                 let res = set_secret(args[i + 1].clone());
                 if res.is_err() {
-                    lerror!("{}", res.unwrap_err());
+                    eprintln!("{}", res.unwrap_err());
                     return;
                 }
             }
@@ -145,7 +145,7 @@ fn main() {
                 console = false;
             }
             _ => {
-                eprintln!("Unknown argument {}", args[i]);
+                eprintln!("Unknown arg {}", args[i]);
                 return;
             }
         }
@@ -309,14 +309,15 @@ Options:
     --cf-workers-domain [DOMAIN]  CF Worker domains
     --pool-size <SIZE>            WebSocket connection pool size
     --cache-dir <PATH>            Cache directory
-    --disable-secure              Disable proxy/worker tls cryptography
-    --allow-v1                    Allow v1 proxy protocol
     --verbose                     Enable verbose logging
     --enable-cf                   Route all connections through Cloudflare
     --no-console                  Disable console output
 "
     );
-    // TODO: add --dc-test
+    // TODO: add to help
+    // --dc-test
+    // --disable-secure              Disable proxy/worker tls cryptography
+    // --allow-v1                    Allow v1 proxy protocol
 }
 
 fn set_pool_size(size: i32) {
@@ -346,10 +347,6 @@ fn set_secret(secret: String) -> Result<(), String> {
     }
     *PROXY_SECRET.write() = secret;
     Ok(())
-}
-
-fn set_force_test_dc(value: bool) {
-    FORCE_TEST_DC.store(value, Ordering::Relaxed);
 }
 
 pub fn exit() {
