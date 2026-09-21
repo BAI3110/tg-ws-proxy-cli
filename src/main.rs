@@ -99,9 +99,19 @@ fn main() {
             "--user-domains" => {
                 user_domain = args[i + 1].clone();
             }
+            "--faketls-domain" => {
+                *FAKE_TLS_DOMAIN.write() = args[i + 1].trim().to_string();
+            }
+            "--cf-workers-domain" => {
+                *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(&args[i + 1]);
+            }
             "--pool-size" => {
-                let size: i32 = args[i + 1].clone().parse().unwrap();
-                set_pool_size(size);
+                let res = args[i + 1].clone().parse();
+                if res.is_err() {
+                    lerror!("{}", res.unwrap_err());
+                    return;
+                }
+                set_pool_size(res.unwrap());
             }
             "--cache-dir" => {
                 let path = args[i + 1].clone();
@@ -110,6 +120,16 @@ fn main() {
                     return;
                 }
                 cache_dir = PathBuf::from(path);
+            }
+            "--disable-secure" => {
+                DISABLE_SECURE.store(true, Ordering::Relaxed);
+                i += 1;
+                continue;
+            }
+            "--allow-v1" => {
+                PROXY_PROTOCOL.store(true, Ordering::Relaxed);
+                i += 1;
+                continue;
             }
             "--verbose" => {
                 verbose = true;
@@ -125,7 +145,7 @@ fn main() {
                 console = false;
             }
             _ => {
-                eprintln!("Unknown arg {}", args[i]);
+                eprintln!("Unknown argument {}", args[i]);
                 return;
             }
         }
@@ -142,9 +162,11 @@ fn main() {
         std::process::exit(0);
     });
 
+    // Установка необходимых значений
     init_logging(verbose, console);
     set_cf_proxy_cache_dir(cache_dir);
     set_cf_proxy_config(cf_enabled, user_domain);
+
     start_proxy(host, port, dc_ips);
     loop {
         let handle = {
@@ -275,21 +297,26 @@ Usage:
     tg-ws-proxy-cli [OPTIONS]
 
 Options:
-    -h, --help                 Show this help message
-    -V, --version              Show version information
+    -h, --help                    Show this help message
+    -V, --version                 Show version information
 
-    --host <HOST>              Local listen address
-    --port <PORT>              Local listen port
-    --secret <SECRET>          MTProto secret
-    --dc <ID:IP>               Override Telegram DC address
-    --user-domains <DOMAIN>    Custom Cloudflare domain(s)
-    --pool-size <SIZE>         WebSocket connection pool size
-    --cache-dir <PATH>         Cache directory
-    --verbose                  Enable verbose logging
-    --enable-cf                Route all connections through Cloudflare
-    --no-console               Disable console output
+    --host <HOST>                 Local listen address
+    --port <PORT>                 Local listen port
+    --secret <SECRET>             MTProto secret
+    --dc <ID:IP>                  Override Telegram DC address
+    --user-domains <DOMAIN>       Custom Cloudflare domain(s)
+    --faketls-domain <DOMAIN>     Domain for tls handshake packet
+    --cf-workers-domain [DOMAIN]  CF Worker domains
+    --pool-size <SIZE>            WebSocket connection pool size
+    --cache-dir <PATH>            Cache directory
+    --disable-secure              Disable proxy/worker tls cryptography
+    --allow-v1                    Allow v1 proxy protocol
+    --verbose                     Enable verbose logging
+    --enable-cf                   Route all connections through Cloudflare
+    --no-console                  Disable console output
 "
     );
+    // TODO: add --dc-test
 }
 
 fn set_pool_size(size: i32) {
@@ -321,24 +348,8 @@ fn set_secret(secret: String) -> Result<(), String> {
     Ok(())
 }
 
-fn set_cf_worker_domains(domains: &str) {
-    *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(domains);
-}
-
-fn set_fake_tls_domain(domain: &str) {
-    *FAKE_TLS_DOMAIN.write() = domain.trim().to_string();
-}
-
-fn set_disable_secure(value: bool) {
-    DISABLE_SECURE.store(value, Ordering::Relaxed);
-}
-
 fn set_force_test_dc(value: bool) {
     FORCE_TEST_DC.store(value, Ordering::Relaxed);
-}
-
-fn set_proxy_protocol(value: bool) {
-    PROXY_PROTOCOL.store(value, Ordering::Relaxed);
 }
 
 pub fn exit() {
