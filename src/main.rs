@@ -6,6 +6,7 @@ mod proxy;
 mod ws;
 
 use config::*;
+use daemonize::Daemonize;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use proxy::{parse_cidr_pool, run_proxy};
@@ -55,6 +56,7 @@ fn main() {
     let mut verbose = false;
     let mut console = true;
     let mut cf_enabled = false;
+    let mut daemon = false;
 
     #[cfg(target_os = "android")]
     let mut cache_dir: PathBuf = PathBuf::from("/data/tmp".to_string());
@@ -103,7 +105,7 @@ fn main() {
                 *FAKE_TLS_DOMAIN.write() = args[i + 1].trim().to_string();
             }
             "--cf-workers-domain" => {
-                *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(&args[i + 1]);
+                *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(args[i + 1].as_str());
             }
             "--pool-size" => {
                 let res = args[i + 1].clone().parse();
@@ -143,6 +145,13 @@ fn main() {
             }
             "--no-console" => {
                 console = false;
+                i += 1;
+                continue;
+            }
+            "--daemon" => {
+                daemon = true;
+                i += 1;
+                continue;
             }
             _ => {
                 eprintln!("Unknown arg {}", args[i]);
@@ -153,14 +162,22 @@ fn main() {
     }
     drop(args);
 
-    ctrlc::set_handler(|| {
-        println!("\r\nCTRL+C received");
-        exit();
-    })
-    .unwrap_or_else(|e| {
-        eprintln!("Bind CTRL+C error: {}", e);
-        std::process::exit(0);
-    });
+    if daemon {
+        DAEMONIZED.store(true, Ordering::Relaxed);
+        Daemonize::new().umask(0o027).start().unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(0);
+        })
+    } else {
+        ctrlc::set_handler(|| {
+            println!("\r\nCTRL+C received");
+            exit();
+        })
+        .unwrap_or_else(|e| {
+            eprintln!("Bind CTRL+C error: {}", e);
+            std::process::exit(0);
+        });
+    }
 
     // Установка необходимых значений
     init_logging(verbose, console);
@@ -300,6 +317,7 @@ Options:
     -h, --help                    Show this help message
     -V, --version                 Show version information
 
+    --daemon                      Start programm as daemon
     --host <HOST>                 Local listen address
     --port <PORT>                 Local listen port
     --secret <SECRET>             MTProto secret
