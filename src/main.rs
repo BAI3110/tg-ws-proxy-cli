@@ -70,7 +70,7 @@ fn main() {
     let mut cache_dir: PathBuf =
         PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("TgWsProxyCli");
 
-    let args = std::env::args().collect::<Vec<String>>();
+    let args = std::env::args().collect::<Box<[String]>>();
     let mut i = 1; // пропускаем имя программы
     while i < args.len() {
         match args[i].as_str() {
@@ -323,7 +323,7 @@ Options:
     --secret <SECRET>             MTProto secret
     --dc <ID:IP>                  Override Telegram DC address
     --user-domains <DOMAIN>       Custom Cloudflare domain(s)
-    --faketls-domain <DOMAIN>     Domain for tls handshake packet
+    --faketls-domain <DOMAIN>     Domain for fake tls handshake packet
     --cf-workers-domain [DOMAIN]  CF Worker domains
     --pool-size <SIZE>            WebSocket connection pool size
     --cache-dir <PATH>            Cache directory
