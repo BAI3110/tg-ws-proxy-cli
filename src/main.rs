@@ -62,9 +62,20 @@ fn main() {
     let mut cache_dir: PathBuf = PathBuf::from("/data/tmp".to_string());
 
     #[cfg(target_os = "linux")]
-    let mut cache_dir: PathBuf = PathBuf::from(std::env::var_os("HOME").unwrap())
-        .join(".cache")
-        .join("TgWsProxyCli");
+    let mut cache_dir: PathBuf = {
+        let path;
+        let home = std::env::var_os("HOME");
+
+        if home.is_none() {
+            path = PathBuf::from("/").join("tmp").join("TgWsProxyCli");
+        } else {
+            path = PathBuf::from(home.unwrap())
+                .join(".cache")
+                .join("TgWsProxyCli");
+        }
+
+        path
+    };
 
     #[cfg(target_os = "windows")]
     let mut cache_dir: PathBuf =
