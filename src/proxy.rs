@@ -2203,24 +2203,44 @@ pub async fn run_proxy(
     }
     linfo!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-    if !LOG_VERBOSE.load(Ordering::Relaxed) {
+    if !LOG_CONSOLE.load(Ordering::Relaxed) {
         let cancel_stats = cancel_root.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            interval.tick().await;
-            loop {
-                tokio::select! {
-                    _ = cancel_stats.cancelled() => return,
-                    _ = interval.tick() => {
-                        if LOG_VERBOSE.load(Ordering::Relaxed) {
-                            println!("{}", STATS.summary_full());
-                        } else {
-                            println!(" {}", STATS.summary());
+
+        if !DAEMONIZED.load(Ordering::Relaxed) {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(60));
+                interval.tick().await;
+                loop {
+                    tokio::select! {
+                        _ = cancel_stats.cancelled() => return,
+                        _ = interval.tick() => {
+                            if LOG_VERBOSE.load(Ordering::Relaxed) {
+                                println!("{}", STATS.summary_full());
+                            } else {
+                                println!(" {}", STATS.summary());
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
+        } else {
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(1));
+                interval.tick().await;
+                loop {
+                    tokio::select! {
+                        _ = cancel_stats.cancelled() => return,
+                        _ = interval.tick() => {
+                            if LOG_VERBOSE.load(Ordering::Relaxed) {
+                                print!("\r{}", STATS.summary_full());
+                            } else {
+                                print!("\r{}", STATS.summary());
+                            }
+                        }
+                    }
+                }
+            });
+        }
     }
 
     loop {
