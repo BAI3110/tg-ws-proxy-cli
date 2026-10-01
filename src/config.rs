@@ -268,12 +268,14 @@ pub fn is_valid_domain(domain: &str) -> bool {
     true
 }
 
-pub fn normalize_domain_pool(domains: &[String]) -> Vec<String> {
+pub fn normalize_domain_pool(domains: Vec<String>) -> Vec<String> {
     use std::collections::HashSet;
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for d in domains {
-        let item = d.trim().to_lowercase();
+    for item in domains
+        .into_iter()
+        .map(|domain| domain.trim().to_lowercase())
+    {
         if !is_valid_domain(&item) {
             continue;
         }
@@ -290,8 +292,12 @@ pub fn normalize_domain_pool(domains: &[String]) -> Vec<String> {
 pub fn coerce_domain_list_str(value: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut result = Vec::new();
-    for item in value.replace(',', " ").replace(';', " ").split_whitespace() {
-        let item = item.trim();
+    for item in value
+        .replace(',', " ")
+        .replace(';', " ")
+        .split_whitespace()
+        .map(|item| item.trim())
+    {
         if item.is_empty() {
             continue;
         }
@@ -386,10 +392,11 @@ impl Stats {
     }
 
     pub fn summary(&self) -> String {
-        let mut parts = vec![format!(
+        let mut parts = Vec::with_capacity(5);
+        parts.push(format!(
             "active:{}",
             self.connections_active.load(Ordering::Relaxed)
-        )];
+        ));
         if CFPROXY_ENABLED.load(Ordering::Relaxed) {
             let cf = self.connections_cfproxy.load(Ordering::Relaxed);
             if cf > 0 {

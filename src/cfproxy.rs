@@ -54,34 +54,33 @@ pub fn normalize_cf_domain(s: &str) -> String {
 }
 
 pub fn default_cfproxy_domains() -> Vec<String> {
-    let mut domains = Vec::with_capacity(CFPROXY_ENC.len());
-    for enc in CFPROXY_ENC {
-        let d = normalize_cf_domain(enc);
-        if !d.is_empty() {
-            domains.push(d);
-        }
-    }
-    domains
+    CFPROXY_ENC
+        .iter()
+        .map(|s| normalize_cf_domain(s))
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
-pub fn merge_cfproxy_domains(lists: &[Vec<String>]) -> Vec<String> {
+pub fn merge_cfproxy_domains(list1: Vec<String>, list2: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
-    let mut merged = Vec::new();
-    for list in lists {
-        for raw in list {
-            let d = normalize_cf_domain(raw);
+    list1
+        .into_iter()
+        .chain(list2)
+        .map(|d| normalize_cf_domain(&d))
+        .map(|d| {
             if d.is_empty() || seen.contains(&d) {
-                continue;
+                return String::new();
             }
             // Дополнительно валидируем как в _normalize_domain_pool оригинала.
             if !crate::config::is_valid_domain(&d) {
-                continue;
+                return String::new();
             }
+
             seen.insert(d.clone());
-            merged.push(d);
-        }
-    }
-    merged
+            d
+        })
+        .filter(|d| !d.is_empty())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -230,10 +229,10 @@ fn load_cfproxy_domains_from_cache() -> Vec<String> {
         Err(_) => return Vec::new(),
     };
     let list: Vec<String> = data.split('\n').map(|s| s.to_string()).collect();
-    merge_cfproxy_domains(&[list])
+    merge_cfproxy_domains(list, Vec::with_capacity(0))
 }
 
-fn save_cfproxy_domains_to_cache(domains: &[String]) {
+fn save_cfproxy_domains_to_cache(domains: Vec<String>) {
     let path = match cfproxy_cache_path() {
         Some(p) => p,
         None => return,
@@ -279,26 +278,30 @@ pub fn init_cfproxy_domains() {
     let mut cfg = CFPROXY.write();
     if !cfg.user_domain.is_empty() {
         let ud = cfg.user_domain.clone();
-        cfg.domains = vec![ud.clone()];
+        let domains = vec![ud.clone()];
+        cfg.domains = domains.clone();
         crate::balancer::BALANCER
             .write()
-            .update_domains_list(&cfg.domains);
+            .update_domains_list(domains);
         return;
     }
 
+    let defaults = default_cfproxy_domains();
+    let cached = load_cfproxy_domains_from_cache();
+
     if !cached.is_empty() {
         let n = cached.len();
-        cfg.domains = merge_cfproxy_domains(&[cached, defaults]);
+        cfg.domains = merge_cfproxy_domains(cached, defaults);
         crate::balancer::BALANCER
             .write()
-            .update_domains_list(&cfg.domains);
+            .update_domains_list(cfg.domains.clone());
         drop(cfg);
         linfo!(" CF: кеш доменов загружен ({} шт.)", n);
     } else {
-        cfg.domains = defaults;
+        cfg.domains = defaults.clone();
         crate::balancer::BALANCER
             .write()
-            .update_domains_list(&cfg.domains);
+            .update_domains_list(defaults);
     }
 }
 
@@ -353,7 +356,7 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
     let url = format!("{}?{}", CFPROXY_DOMAINS_URL, nonce);
     let resp = match client
         .get(&url)
-        .header("User-Agent", "tg-ws-proxy")
+        .header("User-Agent", "tg-ws-proxy cli")
         .send()
         .await
     {
@@ -387,9 +390,9 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
     // Валидация пула как в оригинале: минимум CFPROXY_MIN_VALID_DOMAINS
     // валидных доменов, иначе игнорируем payload и остаёмся на текущем пуле.
     let decoded: Vec<String> = fetched_raw.iter().map(|d| normalize_cf_domain(d)).collect();
-    let pool = normalize_domain_pool(&decoded);
+    let pool = normalize_domain_pool(decoded);
     if pool.len() >= CFPROXY_MIN_VALID_DOMAINS {
-        let merged = merge_cfproxy_domains(&[pool.clone(), default_cfproxy_domains()]);
+        let merged = merge_cfproxy_domains(pool.clone(), default_cfproxy_domains());
         {
             let mut cfg = CFPROXY.write();
             if !cfg.user_domain.is_empty() {
@@ -399,8 +402,8 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
         }
         crate::balancer::BALANCER
             .write()
-            .update_domains_list(&merged);
-        save_cfproxy_domains_to_cache(&merged);
+            .update_domains_list(merged.clone());
+        save_cfproxy_domains_to_cache(merged);
         linfo!(" CF: список доменов обновлен ({} шт.)", pool.len());
         return true;
     }
@@ -440,17 +443,14 @@ struct DohResponse {
 static DOH_CACHE: Lazy<parking_lot::RwLock<std::collections::HashMap<String, (String, Instant)>>> =
     Lazy::new(|| parking_lot::RwLock::new(std::collections::HashMap::new()));
 
-fn pick_preferred_ip(candidates: &[String]) -> String {
+fn pick_preferred_ip(candidates: Vec<IpAddr>) -> String {
     let mut fallback_v6 = String::new();
     for c in candidates {
-        let c = c.trim();
-        if let Ok(ip) = c.parse::<std::net::IpAddr>() {
-            match ip {
-                std::net::IpAddr::V4(v4) => return v4.to_string(),
-                std::net::IpAddr::V6(v6) => {
-                    if fallback_v6.is_empty() {
-                        fallback_v6 = v6.to_string();
-                    }
+        match c {
+            std::net::IpAddr::V4(v4) => return v4.to_string(),
+            std::net::IpAddr::V6(v6) => {
+                if fallback_v6.is_empty() {
+                    fallback_v6 = v6.to_string();
                 }
             }
         }
@@ -517,8 +517,8 @@ pub async fn resolve_doh(domain: &str) -> Option<String> {
                 tokio::time::timeout(Duration::from_millis(1500), tokio::net::lookup_host(host))
                     .await
             {
-                let ips: Vec<String> = addrs.map(|a| a.ip().to_string()).collect();
-                let p = pick_preferred_ip(&ips);
+                let ips: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
+                let p = pick_preferred_ip(ips);
                 if !p.is_empty() {
                     let _ = tx.send(Some(p)).await;
                     return;
