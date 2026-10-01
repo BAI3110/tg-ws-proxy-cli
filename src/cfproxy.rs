@@ -286,9 +286,6 @@ pub fn init_cfproxy_domains() {
         return;
     }
 
-    let defaults = default_cfproxy_domains();
-    let cached = load_cfproxy_domains_from_cache();
-
     if !cached.is_empty() {
         let n = cached.len();
         cfg.domains = merge_cfproxy_domains(cached, defaults);

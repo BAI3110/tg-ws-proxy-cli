@@ -218,9 +218,7 @@ fn main() {
 
 fn start_proxy(host: String, port: u16, dc_ips: String) {
     cfproxy::clear_cfproxy_429_cooldowns();
-
     cfproxy::init_cfproxy_domains();
-
     let dc_opt_map: HashMap<i32, String> = parse_cidr_pool(&dc_ips);
 
     let rt = runtime();
