@@ -2,6 +2,7 @@ use crate::config::*;
 use crate::ws::{RawWebSocket, WsError, is_http_status_error, ws_connect_once};
 use crate::{ldebug, lerror, linfo, lwarn};
 use serde::Deserialize;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;

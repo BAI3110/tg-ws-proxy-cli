@@ -2278,15 +2278,16 @@ pub fn parse_cidr_pool(cidrs_str: &str) -> HashMap<i32, String> {
         return result;
     }
     for pair in cidrs_str.split(',') {
-        let parts: Vec<&str> = pair.split(':').collect();
-        if parts.len() == 2 {
-            let dc_raw = parts[0].trim();
-            let ip_raw = parts[1].trim();
-            if let Ok(dc) = dc_raw.parse::<i32>() {
-                if !ip_raw.is_empty() {
-                    if let Ok(ip) = ip_raw.parse::<std::net::IpAddr>() {
-                        result.insert(dc, ip.to_string());
-                    }
+        let parts = pair.split_once(':').unwrap_or_default();
+        if parts.0.is_empty() || parts.1.is_empty() {
+            continue;
+        }
+        let dc_raw = parts.0.trim();
+        let ip_raw = parts.1.trim();
+        if let Ok(dc) = dc_raw.parse::<i32>() {
+            if !ip_raw.is_empty() {
+                if let Ok(ip) = ip_raw.parse::<std::net::IpAddr>() {
+                    result.insert(dc, ip.to_string());
                 }
             }
         }

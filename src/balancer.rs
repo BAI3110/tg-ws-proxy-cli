@@ -19,23 +19,33 @@ impl Balancer {
         }
     }
 
-    pub fn update_domains_list(&mut self, domains_list: &[String]) {
-        // Оригинал: if Counter(self.domains) == Counter(domains_list): return.
-        // Отсортированное сравнение эквивалентно сравнению мультимножеств.
-        let mut current_sorted = self.domains.clone();
-        current_sorted.sort();
-        let mut new_sorted = domains_list.to_vec();
-        new_sorted.sort();
-
-        if current_sorted == new_sorted {
-            return;
-        }
-
+    pub fn update_domains_list(&mut self, domains_list: Vec<String>) {
         if domains_list.is_empty() {
             return;
         }
 
-        self.domains = domains_list.to_vec();
+        if self.domains.len() == domains_list.len() {
+            let mut counts = HashMap::new();
+
+            for domain in &self.domains {
+                *counts.entry(domain).or_insert(0) += 1;
+            }
+
+            for domain in &domains_list {
+                if let Some(count) = counts.get_mut(domain) {
+                    *count -= 1;
+                } else {
+                    counts.insert(domain, -1);
+                    break;
+                }
+            }
+
+            if counts.values().all(|&count| count == 0) {
+                return;
+            }
+        }
+
+        self.domains = domains_list;
         let mut rng = rand::thread_rng();
 
         self.dc_to_domain.clear();
