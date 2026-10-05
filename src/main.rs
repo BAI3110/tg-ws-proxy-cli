@@ -106,8 +106,18 @@ fn main() {
                     return;
                 }
             }
+            "--allow-v1" => {
+                PROXY_PROTOCOL.store(true, Ordering::Relaxed);
+                i += 1;
+                continue;
+            }
             "--dc" => {
                 dc_ips = args[i + 1].clone();
+            }
+            "--force-test-dc" => {
+                FORCE_TEST_DC.store(true, Ordering::Relaxed);
+                i += 1;
+                continue;
             }
             "--user-domains" => {
                 user_domain = args[i + 1].clone();
@@ -117,6 +127,11 @@ fn main() {
             }
             "--cf-workers-domain" => {
                 *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(args[i + 1].as_str());
+            }
+            "--no-secure" => {
+                DISABLE_SECURE.store(true, Ordering::Relaxed);
+                i += 1;
+                continue;
             }
             "--pool-size" => {
                 let res = args[i + 1].clone().parse();
@@ -134,13 +149,17 @@ fn main() {
                 }
                 cache_dir = PathBuf::from(path);
             }
+            "--buffer-size" => match args[i + 1].clone().parse::<i32>() {
+                Ok(val) => {
+                    set_buffer_size(val);
+                }
+                Err(e) => {
+                    eprintln!("--buffer-size: {}", e);
+                    return;
+                }
+            },
             "--disable-secure" => {
                 DISABLE_SECURE.store(true, Ordering::Relaxed);
-                i += 1;
-                continue;
-            }
-            "--allow-v1" => {
-                PROXY_PROTOCOL.store(true, Ordering::Relaxed);
                 i += 1;
                 continue;
             }
@@ -330,25 +349,33 @@ Options:
     --host <HOST>                 Local listen address
     --port <PORT>                 Local listen port
     --secret <SECRET>             MTProto secret
-    --dc <ID:IP>                  Override Telegram DC address
-    --user-domains <DOMAIN>       Custom Cloudflare domain(s)
+    --allow-v1                    Allow v1 proxy protocol
+    --dc [ID:IP]                  Override Telegram DC address
+    --force-test-dc               Direct traffic to test DC
+    --user-domains [DOMAIN]       Custom Cloudflare domain(s)
     --faketls-domain <DOMAIN>     Domain for fake tls handshake packet
     --cf-workers-domain [DOMAIN]  CF Worker domains
+    --no-secure                   Disable proxy/worker tls cryptography
     --pool-size <SIZE>            WebSocket connection pool size
     --cache-dir <PATH>            Cache directory
+    --buffer-size <SIZE>          Network buffer size. Default: 4 kb
     --verbose                     Enable verbose logging
     --enable-cf                   Route all connections through Cloudflare
     --no-console                  Disable console output
 "
     );
-    // TODO: add to help
-    // --dc-test
-    // --disable-secure              Disable proxy/worker tls cryptography
-    // --allow-v1                    Allow v1 proxy protocol
 }
 
 fn set_pool_size(size: i32) {
-    POOL_SIZE.store(size.clamp(2, 16), Ordering::Relaxed);
+    POOL_SIZE.store(size.clamp(0, 16), Ordering::Relaxed);
+}
+
+fn set_buffer_size(size: i32) {
+    let n = size.clamp(4, 4096) * 1024;
+
+    BUFFER_SIZE.store(n, Ordering::Relaxed);
+    RECV_BUF.store(n, Ordering::Relaxed);
+    SEND_BUF.store(n, Ordering::Relaxed);
 }
 
 fn set_cf_proxy_cache_dir(cache_dir: PathBuf) {
