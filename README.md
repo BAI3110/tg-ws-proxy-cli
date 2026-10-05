@@ -55,19 +55,26 @@ Usage:
     tg-ws-proxy-cli [OPTIONS]
 
 Options:
-    -h, --help                 Show this help message
-    -V, --version              Show version information
+    -h, --help                    Show this help message
+    -V, --version                 Show version information
 
-    --host <HOST>              Local listen address
-    --port <PORT>              Local listen port
-    --secret <SECRET>          MTProto secret
-    --dc <ID:IP>               Override Telegram DC address
-    --user-domains <DOMAIN>    Custom Cloudflare domain(s)
-    --pool-size <SIZE>         WebSocket connection pool size
-    --cache-dir <PATH>         Cache directory
-    --verbose                  Enable verbose logging
-    --enable-cf                Route all connections through Cloudflare
-    --no-console               Disable console output
+    --daemon                      Start programm as daemon
+    --host <HOST>                 Local listen address
+    --port <PORT>                 Local listen port
+    --secret <SECRET>             MTProto secret
+    --allow-v1                    Allow v1 proxy protocol
+    --dc [ID:IP]                  Override Telegram DC address
+    --force-test-dc               Direct traffic to test DC
+    --user-domains [DOMAIN]       Custom Cloudflare domain(s)
+    --faketls-domain <DOMAIN>     Domain for fake tls handshake packet
+    --cf-workers-domain [DOMAIN]  CF Worker domains
+    --no-secure                   Disable proxy/worker tls cryptography
+    --pool-size <SIZE>            WebSocket connection pool size
+    --cache-dir <PATH>            Cache directory
+    --buffer-size <SIZE>          Network buffer size. Default: 4 kb
+    --verbose                     Enable verbose logging
+    --enable-cf                   Route all connections through Cloudflare
+    --no-console                  Disable console output
 ```
 
 > [!NOTE]
@@ -78,7 +85,7 @@ Options:
 
 ## Благодарности
 
-- Flowseal — оригинальная реализация TG WS Proxy (MIT)
+- Flowseal — оригинальная реализация TG WS Proxy
 - amurcanov — Android-версия проекта
 
 ## Лицензия
