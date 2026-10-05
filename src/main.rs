@@ -384,11 +384,15 @@ fn set_cf_proxy_cache_dir(cache_dir: PathBuf) {
 
 fn set_cf_proxy_config(enabled: bool, user_domain: String) {
     CFPROXY_ENABLED.store(enabled, Ordering::Relaxed);
+    let list = coerce_domain_list_str(&user_domain);
     let mut cfg = CFPROXY.write();
-    cfg.user_domain = user_domain.clone();
-    if !user_domain.is_empty() {
-        cfg.domains = vec![user_domain.clone()];
-        cfg.active = user_domain;
+    cfg.user_domain = user_domain.trim().to_string();
+    if !list.is_empty() {
+        cfg.domains = list.clone();
+        cfg.active = list[0].clone();
+        crate::balancer::BALANCER
+            .write()
+            .update_domains_list(cfg.domains.clone());
     }
 }
 
