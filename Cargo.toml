@@ -23,7 +23,6 @@ byteorder = "1"
 socket2 = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-ctrlc = "3"
 daemonize = "0.5.0"
 
 # HTTP-клиент для DoH/GitHub без TLS-дублирования: используем reqwest на rustls

@@ -144,7 +144,7 @@ fn main() {
             "--cache-dir" => {
                 let path = args[i + 1].clone();
                 let path_buf = PathBuf::from(path.clone());
-                if path_buf.is_file() && path_buf.exists() {
+                if path_buf.is_file() {
                     return;
                 }
                 cache_dir = PathBuf::from(path);
@@ -196,17 +196,7 @@ fn main() {
         DAEMONIZED.store(true, Ordering::Relaxed);
         Daemonize::new().umask(0o027).start().unwrap_or_else(|e| {
             eprintln!("{}", e);
-            std::process::exit(0);
         })
-    } else {
-        ctrlc::set_handler(|| {
-            println!("\r\nCTRL+C received");
-            exit();
-        })
-        .unwrap_or_else(|e| {
-            eprintln!("Bind CTRL+C error: {}", e);
-            std::process::exit(0);
-        });
     }
 
     // Установка необходимых значений
@@ -232,7 +222,7 @@ fn main() {
         std::thread::sleep(Duration::from_millis(50));
     }
     // ожидаем 4 секунды для корректного завершения программы
-    std::thread::sleep(Duration::from_secs(4));
+    //std::thread::sleep(Duration::from_secs(4));
 }
 
 fn start_proxy(host: String, port: u16, dc_ips: String) {
@@ -253,6 +243,25 @@ fn start_proxy(host: String, port: u16, dc_ips: String) {
     let cancel_root = cancel_tasks.clone();
 
     let handle = rt.spawn(async move {
+        // обработка сигналов
+        #[cfg(unix)]
+        tokio::spawn(async {
+            use tokio::signal::unix::{SignalKind, signal};
+
+            let mut sigint = signal(SignalKind::interrupt()).unwrap();
+            let mut sigterm = signal(SignalKind::terminate()).unwrap();
+            tokio::select! {
+                _ = sigint.recv() => {
+                    linfo!("\nCTRL+C received");
+                    tokio::task::spawn_blocking(exit).await.unwrap();
+                },
+                _ = sigterm.recv() => {
+                    linfo!("\nSIGTERM received");
+                    tokio::task::spawn_blocking(exit).await.unwrap();
+                }
+            }
+        });
+
         // Предварительный bind для сигнала готовности
         let addr = format!("{}:{}", host_task, port);
         match tokio::net::TcpListener::bind(&addr).await {
