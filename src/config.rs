@@ -621,7 +621,7 @@ pub fn init_logging(verbose: bool, console: bool) {
     }
     #[cfg(target_os = "windows")]
     {
-        let layer = reg.with(tracing_layer_win_eventlog::EventLogLayer::new(TAG));
+        let layer = reg.with(tracing_layer_win_eventlog::EventLogLayer::new(TAG).unwrap());
     }
 
     LOG_VERBOSE.store(verbose, Ordering::Relaxed);

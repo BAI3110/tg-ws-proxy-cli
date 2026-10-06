@@ -6,7 +6,6 @@ mod proxy;
 mod ws;
 
 use config::*;
-use daemonize::Daemonize;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
 use proxy::{parse_cidr_pool, run_proxy};
@@ -17,6 +16,9 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
+
+#[cfg(unix)]
+use daemonize::Daemonize;
 
 use crate::proxy::ProxyPools;
 
@@ -178,6 +180,13 @@ fn main() {
                 i += 1;
                 continue;
             }
+            #[cfg(not(unix))]
+            "--daemon" => {
+                println!("WARNING: This option working only unix systems!");
+                i += 1;
+                continue;
+            }
+            #[cfg(unix)]
             "--daemon" => {
                 daemon = true;
                 i += 1;
@@ -192,9 +201,10 @@ fn main() {
     }
     drop(args);
 
+    #[cfg(unix)]
     if daemon {
         DAEMONIZED.store(true, Ordering::Relaxed);
-        Daemonize::new().umask(0o027).start().unwrap_or_else(|e| {
+        Daemonize::new().start().unwrap_or_else(|e| {
             eprintln!("{}", e);
         })
     }
@@ -354,7 +364,7 @@ Options:
     -h, --help                    Show this help message
     -V, --version                 Show version information
 
-    --daemon                      Start programm as daemon
+    --daemon                      Start programm as daemon.
     --host <HOST>                 Local listen address
     --port <PORT>                 Local listen port
     --secret <SECRET>             MTProto secret
