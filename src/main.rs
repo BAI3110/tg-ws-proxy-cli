@@ -254,6 +254,11 @@ fn start_proxy(host: String, port: u16, dc_ips: String) {
 
     let handle = rt.spawn(async move {
         // обработка сигналов
+        #[cfg(not(unix))]
+        tokio::spawn(async {
+            tokio::signal::ctrl_c().await.unwrap();
+            tokio::task::spawn_blocking(exit).await.unwrap();
+        });
         #[cfg(unix)]
         tokio::spawn(async {
             use tokio::signal::unix::{SignalKind, signal};
