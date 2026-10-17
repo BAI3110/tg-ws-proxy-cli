@@ -375,18 +375,22 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
         }
     };
 
-    let mut fetched_raw = Vec::new();
-    for line in body.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        fetched_raw.push(line.to_string());
-    }
+    let fetched_raw = body
+        .lines()
+        .into_iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() || !l.starts_with('#'))
+        .collect::<Vec<_>>();
+
+    let f_len = fetched_raw.len();
 
     // Валидация пула как в оригинале: минимум CFPROXY_MIN_VALID_DOMAINS
     // валидных доменов, иначе игнорируем payload и остаёмся на текущем пуле.
-    let decoded: Vec<String> = fetched_raw.iter().map(|d| normalize_cf_domain(d)).collect();
+    let decoded: Vec<String> = fetched_raw
+        .into_iter()
+        .map(|d| normalize_cf_domain(d))
+        .filter(|d| !d.is_empty())
+        .collect();
     let pool = normalize_domain_pool(decoded);
     if pool.len() >= CFPROXY_MIN_VALID_DOMAINS {
         let merged = merge_cfproxy_domains(pool.clone(), default_cfproxy_domains());
@@ -405,10 +409,10 @@ pub async fn try_refresh_cfproxy_domains() -> bool {
         return true;
     }
 
-    if !fetched_raw.is_empty() {
+    if f_len > 0 {
         lwarn!(
             " CF: игнорирую список доменов (total={}, valid={}, need>={}); остаюсь на текущем пуле",
-            fetched_raw.len(),
+            f_len,
             pool.len(),
             CFPROXY_MIN_VALID_DOMAINS
         );
@@ -484,7 +488,7 @@ pub async fn resolve_doh(domain: &str) -> Option<String> {
         tasks.push(tokio::spawn(async move {
             let full = format!("{}?name={}&type=A", u, domain);
             if let Ok(resp) = client
-                .get(&full)
+                .get(full)
                 .header("Accept", "application/dns-json")
                 .send()
                 .await

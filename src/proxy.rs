@@ -711,14 +711,13 @@ impl CfWorkerPool {
         if fallbacks.is_empty() {
             return;
         }
-        for (dc, fallback_dst) in &fallbacks {
-            self.refill_now(*dc, fallback_dst.clone(), worker_domains.clone())
+
+        let flen = fallbacks.len();
+        for (dc, fallback_dst) in fallbacks {
+            self.refill_now(dc, fallback_dst, worker_domains.clone())
                 .await;
         }
-        linfo!(
-            "CF worker pool warmup started for {} DC(s)",
-            fallbacks.len()
-        );
+        linfo!("CF worker pool warmup started for {} DC(s)", flen);
     }
 
     pub async fn close_all(&self) {
@@ -2278,12 +2277,12 @@ pub async fn run_proxy(
     Ok(())
 }
 
-pub fn parse_cidr_pool(cidrs_str: &str) -> HashMap<i32, String, nohash::BuildNoHashHasher<i32>> {
+pub fn parse_cidr_pool(cidrs: String) -> HashMap<i32, String, nohash::BuildNoHashHasher<i32>> {
     let mut result = HashMap::default();
     if cidrs_str.trim().is_empty() {
         return result;
     }
-    for pair in cidrs_str.split(',') {
+    for pair in cidrs.split(',') {
         let parts = pair.split_once(':').unwrap_or_default();
         if parts.0.is_empty() || parts.1.is_empty() {
             continue;
