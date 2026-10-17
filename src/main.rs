@@ -70,6 +70,8 @@ fn runtime() -> &'static Runtime {
 }
 
 fn main() {
+    use std::mem::take;
+
     let mut host = "127.0.0.1".to_string();
     let mut port = DEFAULT_PORT;
     let mut dc_ips = String::new();
@@ -102,7 +104,7 @@ fn main() {
     let mut cache_dir: PathBuf =
         PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap()).join("TgWsProxyCli");
 
-    let args = std::env::args().collect::<Box<[String]>>();
+    let mut args = std::env::args().collect::<Vec<String>>();
     let mut i = 1; // пропускаем имя программы
     while i < args.len() {
         match args[i].as_str() {
@@ -115,13 +117,13 @@ fn main() {
                 return;
             }
             "--host" => {
-                host = args[i + 1].clone();
+                host = take(&mut args[i + 1]);
             }
             "--port" => {
-                port = args[i + 1].clone().parse().unwrap();
+                port = args[i + 1].parse().unwrap();
             }
             "--secret" => {
-                let res = set_secret(args[i + 1].clone());
+                let res = set_secret(take(&mut args[i + 1]));
                 if res.is_err() {
                     eprintln!("{}", res.unwrap_err());
                     return;
@@ -133,7 +135,7 @@ fn main() {
                 continue;
             }
             "--dc" => {
-                dc_ips = args[i + 1].clone();
+                dc_ips = take(&mut args[i + 1]);
             }
             "--force-test-dc" => {
                 FORCE_TEST_DC.store(true, Ordering::Relaxed);
@@ -141,13 +143,13 @@ fn main() {
                 continue;
             }
             "--user-domains" => {
-                user_domain = args[i + 1].clone();
+                user_domain = take(&mut args[i + 1]);
             }
             "--faketls-domain" => {
-                *FAKE_TLS_DOMAIN.write() = args[i + 1].trim().to_string();
+                *FAKE_TLS_DOMAIN.write() = take(&mut args[i + 1]).trim().into();
             }
             "--cf-workers-domain" => {
-                *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(args[i + 1].as_str());
+                *CF_WORKER_DOMAINS.write() = coerce_domain_list_str(&take(&mut args[i + 1]));
             }
             "--no-secure" => {
                 DISABLE_SECURE.store(true, Ordering::Relaxed);
@@ -155,22 +157,25 @@ fn main() {
                 continue;
             }
             "--pool-size" => {
-                let res = args[i + 1].clone().parse();
-                if res.is_err() {
-                    lerror!("{}", res.unwrap_err());
+                let parse_res = take(&mut args[i + 1]).parse();
+                if parse_res.is_err() {
+                    lerror!("{}", parse_res.unwrap_err());
                     return;
                 }
-                set_pool_size(res.unwrap());
+                let set_res = set_pool_size(parse_res.unwrap());
+                if set_res.is_err() {
+                    lerror!("{}", set_res.unwrap_err());
+                    return;
+                }
             }
             "--cache-dir" => {
-                let path = args[i + 1].clone();
-                let path_buf = PathBuf::from(path.clone());
-                if path_buf.is_file() {
+                let path = take(&mut args[i + 1]);
+                cache_dir = PathBuf::from(path);
+                if cache_dir.is_file() {
                     return;
                 }
-                cache_dir = PathBuf::from(path);
             }
-            "--buffer-size" => match args[i + 1].clone().parse::<i32>() {
+            "--buffer-size" => match take(&mut args[i + 1]).parse::<i32>() {
                 Ok(val) => {
                     set_buffer_size(val);
                 }
@@ -196,12 +201,6 @@ fn main() {
             }
             "--no-console" => {
                 console = false;
-                i += 1;
-                continue;
-            }
-            #[cfg(not(unix))]
-            "--daemon" => {
-                println!("WARNING: This option working only unix systems!");
                 i += 1;
                 continue;
             }
