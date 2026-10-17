@@ -22,6 +22,10 @@ use daemonize::Daemonize;
 
 use crate::proxy::ProxyPools;
 
+#[cfg(target_env = "musl")]
+#[global_allocator]
+pub static GLOBAL: jemalloc::Jemalloc = jemalloc::Jemalloc::default();
+
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Глобальный рантайм — никогда не дропается
@@ -40,14 +44,29 @@ fn state_cell() -> &'static Mutex<Option<ProxyState>> {
 }
 
 fn runtime() -> &'static Runtime {
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("tgwsproxy-rt")
-            .enable_all()
-            .build()
-            .expect("failed to build global tokio runtime")
-    })
+    #[cfg(not(target_env = "musl"))]
+    {
+        RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_name("tgwsproxy-rt")
+                .enable_all()
+                .build()
+                .expect("failed to build global tokio runtime")
+        })
+    }
+    #[cfg(target_env = "musl")]
+    {
+        RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .max_blocking_threads(2)
+                .thread_stack_size(256 * 1024)
+                .thread_name("tgwsproxy-rt")
+                .enable_all()
+                .build()
+                .expect("failed to build global tokio runtime")
+        })
+    }
 }
 
 fn main() {
