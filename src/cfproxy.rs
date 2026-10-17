@@ -63,24 +63,14 @@ pub fn default_cfproxy_domains() -> Vec<String> {
 }
 
 pub fn merge_cfproxy_domains(list1: Vec<String>, list2: Vec<String>) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
     list1
         .into_iter()
         .chain(list2)
         .map(|d| normalize_cf_domain(&d))
-        .map(|d| {
-            if d.is_empty() || seen.contains(&d) {
-                return String::new();
-            }
-            // Дополнительно валидируем как в _normalize_domain_pool оригинала.
-            if !crate::config::is_valid_domain(&d) {
-                return String::new();
-            }
-
-            seen.insert(d.clone());
-            d
-        })
         .filter(|d| !d.is_empty())
+        .collect::<FastHashSet<_>>()
+        .into_iter()
+        .filter(|d| crate::config::is_valid_domain(&d))
         .collect()
 }
 
@@ -201,7 +191,6 @@ pub fn cfproxy_429_cooldown_remaining(domain: &str) -> Duration {
     until - now
 }
 
-#[inline]
 pub async fn acquire_cfproxy_attempt_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
     CFPROXY_SEM.acquire().await.ok()
 }
@@ -229,8 +218,18 @@ fn load_cfproxy_domains_from_cache() -> Vec<String> {
         Ok(d) => d,
         Err(_) => return Vec::new(),
     };
-    let list: Vec<String> = data.split('\n').map(|s| s.to_string()).collect();
-    merge_cfproxy_domains(list, Vec::with_capacity(0))
+
+    if data.len() == 0 {
+        return Vec::new();
+    }
+
+    data.lines()
+        .filter(|l| !l.is_empty())
+        .collect::<FastHashSet<_>>()
+        .into_iter()
+        .filter(|d| crate::config::is_valid_domain(&d))
+        .map(str::to_string)
+        .collect()
 }
 
 fn save_cfproxy_domains_to_cache(domains: Vec<String>) {
@@ -438,8 +437,8 @@ struct DohResponse {
     answer: Vec<DohAnswer>,
 }
 
-static DOH_CACHE: Lazy<parking_lot::RwLock<std::collections::HashMap<String, (String, Instant)>>> =
-    Lazy::new(|| parking_lot::RwLock::new(std::collections::HashMap::new()));
+static DOH_CACHE: Lazy<parking_lot::RwLock<FastHashMap<String, (String, Instant)>>> =
+    Lazy::new(|| parking_lot::RwLock::new(FastHashMap::default()));
 
 fn pick_preferred_ip(candidates: Vec<IpAddr>) -> String {
     let mut fallback_v6 = String::new();

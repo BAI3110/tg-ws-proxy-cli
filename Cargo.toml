@@ -22,6 +22,8 @@ rand = "0.8"
 byteorder = "1"
 socket2 = "0.5"
 tracing = "0.1"
+nohash = "0.2.0"
+xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # HTTP-клиент для DoH/GitHub без TLS-дублирования: используем reqwest на rustls

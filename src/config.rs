@@ -1,10 +1,14 @@
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 use tracing_subscriber::layer::SubscriberExt;
+
+pub type FastHashSet<T> = HashSet<T, xxhash_rust::xxh3::Xxh3Builder>;
+pub type FastHashMap<K, V> = HashMap<K, V, xxhash_rust::xxh3::Xxh3Builder>;
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration — портировано из proxy/utils.py + tg_ws_proxy.py
@@ -225,7 +229,8 @@ impl DcKey {
 }
 
 // Global state — proxy/tg_ws_proxy.py: ws_blacklist / dc_fail_until / ip_fail_until
-pub static DC_OPT: Lazy<RwLock<HashMap<i32, String>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+pub static DC_OPT: Lazy<RwLock<HashMap<i32, String, nohash::BuildNoHashHasher<i32>>>> =
+    Lazy::new(|| RwLock::new(HashMap::default()));
 pub static WS_BLACKLIST: Lazy<RwLock<HashMap<DcKey, bool>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 pub static DC_FAIL_UNTIL: Lazy<RwLock<HashMap<DcKey, f64>>> =
@@ -269,46 +274,24 @@ pub fn is_valid_domain(domain: &str) -> bool {
 }
 
 pub fn normalize_domain_pool(domains: Vec<String>) -> Vec<String> {
-    use std::collections::HashSet;
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for item in domains
+    domains
         .into_iter()
-        .map(|domain| domain.trim().to_lowercase())
-    {
-        if !is_valid_domain(&item) {
-            continue;
-        }
-        if seen.contains(&item) {
-            continue;
-        }
-        seen.insert(item.clone());
-        out.push(item);
-    }
-    out
+        .map(|d| d.trim().to_lowercase())
+        .filter(|d| is_valid_domain(d))
+        .collect::<FastHashSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 /// proxy/config.py::coerce_domain_list — строка или список через , ; пробелы.
 pub fn coerce_domain_list_str(value: &str) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut result = Vec::new();
-    for item in value
-        .replace(',', " ")
-        .replace(';', " ")
+    value
+        .replace([',', ';'], " ")
         .split_whitespace()
-        .map(|item| item.trim())
-    {
-        if item.is_empty() {
-            continue;
-        }
-        let key = item.to_lowercase();
-        if seen.contains(&key) {
-            continue;
-        }
-        seen.insert(key);
-        result.push(item.to_string());
-    }
-    result
+        .map(|item| item.to_lowercase())
+        .collect::<FastHashSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

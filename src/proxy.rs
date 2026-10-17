@@ -411,7 +411,10 @@ impl WsPool {
         self.rotating.lock().await.remove(&slot);
     }
 
-    pub async fn warmup(self: &Arc<Self>, dc_opt_map: &HashMap<i32, String>) {
+    pub async fn warmup(
+        self: &Arc<Self>,
+        dc_opt_map: &HashMap<i32, String, nohash::BuildNoHashHasher<i32>>,
+    ) {
         let mut ndcs = 0;
         for (dc, target_ip) in dc_opt_map {
             if target_ip.is_empty() {
@@ -509,18 +512,18 @@ pub struct CfWorkerEntry {
 }
 
 pub struct CfWorkerPool {
-    idle: Mutex<HashMap<i32, VecDeque<CfWorkerEntry>>>,
-    refilling: Mutex<HashSet<i32>>,
-    exhausted_until: Mutex<HashMap<String, f64>>,
+    idle: Mutex<HashMap<i32, VecDeque<CfWorkerEntry>, nohash::BuildNoHashHasher<i32>>>,
+    refilling: Mutex<HashSet<i32, nohash::BuildNoHashHasher<i32>>>,
+    exhausted_until: Mutex<FastHashMap<String, f64>>,
     cancel_token: CancellationToken,
 }
 
 impl CfWorkerPool {
     pub fn new(cancel_token: CancellationToken) -> CfWorkerPool {
         CfWorkerPool {
-            idle: Mutex::new(HashMap::new()),
-            refilling: Mutex::new(HashSet::new()),
-            exhausted_until: Mutex::new(HashMap::new()),
+            idle: Mutex::new(HashMap::default()),
+            refilling: Mutex::new(HashSet::default()),
+            exhausted_until: Mutex::new(HashMap::default()),
             cancel_token,
         }
     }
@@ -663,7 +666,7 @@ impl CfWorkerPool {
         let now = now_unix_f64();
         let mut exhausted = self.exhausted_until.lock().await;
         let mut domains = Vec::new();
-        let mut seen = HashSet::new();
+        let mut seen = FastHashSet::default();
         for domain in worker_domains {
             if !seen.insert(domain.clone()) {
                 continue;
@@ -691,7 +694,10 @@ impl CfWorkerPool {
         return;
     }
 
-    pub async fn warmup(self: &Arc<Self>, dc_opt_map: &HashMap<i32, String>) {
+    pub async fn warmup(
+        self: &Arc<Self>,
+        dc_opt_map: &HashMap<i32, String, nohash::BuildNoHashHasher<i32>>,
+    ) {
         let worker_domains = CF_WORKER_DOMAINS.read().clone();
         if worker_domains.is_empty() {
             return;
@@ -751,7 +757,7 @@ impl ProxyPools {
         }
     }
 
-    pub async fn warmup(&self, dc_opt_map: &HashMap<i32, String>) {
+    pub async fn warmup(&self, dc_opt_map: &HashMap<i32, String, nohash::BuildNoHashHasher<i32>>) {
         self.ws.warmup(dc_opt_map).await;
         self.cf_worker.warmup(dc_opt_map).await;
     }
@@ -2155,7 +2161,7 @@ pub async fn run_proxy(
     pools: Arc<ProxyPools>,
     host: String,
     port: u16,
-    dc_opt_map: HashMap<i32, String>,
+    dc_opt_map: HashMap<i32, String, nohash::BuildNoHashHasher<i32>>,
     cancel_root: CancellationToken,
     listener: TcpListener,
 ) -> std::io::Result<()> {
@@ -2272,8 +2278,8 @@ pub async fn run_proxy(
     Ok(())
 }
 
-pub fn parse_cidr_pool(cidrs_str: &str) -> HashMap<i32, String> {
-    let mut result = HashMap::new();
+pub fn parse_cidr_pool(cidrs_str: &str) -> HashMap<i32, String, nohash::BuildNoHashHasher<i32>> {
+    let mut result = HashMap::default();
     if cidrs_str.trim().is_empty() {
         return result;
     }
