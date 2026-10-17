@@ -2279,7 +2279,7 @@ pub async fn run_proxy(
 
 pub fn parse_cidr_pool(cidrs: String) -> HashMap<i32, String, nohash::BuildNoHashHasher<i32>> {
     let mut result = HashMap::default();
-    if cidrs_str.trim().is_empty() {
+    if cidrs.trim().is_empty() {
         return result;
     }
     for pair in cidrs.split(',') {
